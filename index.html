@@ -16,7 +16,6 @@
     html, body { margin: 0; min-height: 100%; background: #031326; font-family: system-ui, -apple-system, sans-serif; }
     body { overflow: hidden; }
     #gameCanvas { display: block; width: 100vw; height: 100vh; background: #062d52; }
-    #threeCanvas { position: fixed; inset: 0; z-index: 1; width: 100vw; height: 100vh; pointer-events: none; }
     #debugCanvas {
       position: fixed; z-index: 3; top: 16px; right: 16px; width: min(28vw, 320px);
       aspect-ratio: 4 / 3; border: 2px solid var(--cyan); border-radius: 12px;
@@ -96,7 +95,6 @@
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <canvas id="threeCanvas"></canvas>
   <canvas id="debugCanvas" width="640" height="480"></canvas>
   <label id="modePanel">控制模式
     <select id="modeSelect" aria-label="控制模式">
@@ -133,13 +131,11 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script>
     (() => {
       'use strict';
       const game = document.getElementById('gameCanvas');
       const ctx = game.getContext('2d');
-      const threeCanvas = document.getElementById('threeCanvas');
       const debug = document.getElementById('debugCanvas');
       const dctx = debug.getContext('2d');
       const video = document.getElementById('video');
@@ -165,7 +161,7 @@
       const TAU = Math.PI * 2;
       const colors = ['#54d7ff', '#ff79c6', '#ffd166', '#a7f36b'];
       let W = innerWidth, H = innerHeight, last = performance.now(), score = 0;
-      let aim = { x: W * .5, y: H * .7 }, power = 0, cannonLevel = 1;
+      let aim = { x: W * .5, y: H * .7 }, targetAim = { x: W * .5, y: H * .7 }, power = 0, cannonLevel = 1;
       let charging = false, chargeStarted = 0, lastShot = 0, freezeUntil = 0, freezeGestureAt = 0;
       let handLandmarks = null, previousTip = null, tipHistory = [], speed = 0, pinch = false, peaceWasOn = false;
       let mode = 'gesture', audio, hands, camera, cameraRunning = false, gameStarted = false;
@@ -178,7 +174,8 @@
       class ParticleManager {
         constructor() { this.items = []; }
         emit(x, y, count, options = {}) {
-          for (let i = 0; i < count; i++) {
+          const available = Math.max(0, 700 - this.items.length);
+          for (let i = 0; i < Math.min(count, available); i++) {
             const angle = rand(0, TAU), velocity = rand(options.speedMin || 20, options.speedMax || 100);
             this.items.push({
               x, y, vx: Math.cos(angle) * velocity, vy: Math.sin(angle) * velocity,
@@ -222,16 +219,16 @@
         clownfish: { id: 'clownfish', name: '小丑鱼', scientificName: 'Amphiprioninae', category: '珊瑚礁鱼', hp: 1, speed: 34, score: 10, rarity: 'common', width: 42, height: 24, primaryColor: '#f47b35', accentColor: '#fff3df', tailSegments: 3, waterDepth: '浅', conservationStatus: '无危', funFact: '小丑鱼可以在一生中改变性别。', layer: 'surface', pattern: 'clown' },
         butterflyfish: { id: 'butterflyfish', name: '蝴蝶鱼', scientificName: 'Chaetodontidae', category: '珊瑚礁鱼', hp: 2, speed: 28, score: 20, rarity: 'rare', width: 52, height: 31, primaryColor: '#f7c948', accentColor: '#47d7ff', tailSegments: 2, waterDepth: '浅', conservationStatus: '无危', funFact: '蝴蝶鱼细长的吻部适合从珊瑚缝隙中觅食。', layer: 'surface', pattern: 'diamond' },
         snapper: { id: 'snapper', name: '红鲷鱼', scientificName: 'Lutjanus campechanus', category: '珊瑚礁鱼', hp: 2, speed: 25, score: 25, rarity: 'rare', width: 55, height: 34, primaryColor: '#ed5366', accentColor: '#ffd166', tailSegments: 2, waterDepth: '中', conservationStatus: '无危', funFact: '红鲷鱼会在珊瑚礁附近组成小群体巡游。', layer: 'mid', pattern: 'diamond' },
+        tang: { id: 'tang', name: '蓝魔鬼/帝王鱼', scientificName: 'Paracanthurus hepatus', category: '珊瑚礁鱼', hp: 2, speed: 31, score: 28, rarity: 'rare', width: 50, height: 34, primaryColor: '#1464d8', accentColor: '#ffd83d', tailSegments: 3, waterDepth: '浅', conservationStatus: '无危', funFact: '帝王鱼的蓝色体色来自特殊的皮肤结构。', layer: 'surface', pattern: 'tang' },
         sardine: { id: 'sardine', name: '小沙丁鱼', scientificName: 'Sardinella spp.', category: '群游鱼', hp: 1, speed: 48, score: 8, rarity: 'common', width: 34, height: 18, primaryColor: '#70d8e8', accentColor: '#e7fbff', tailSegments: 2, waterDepth: '中', conservationStatus: '无危', funFact: '沙丁鱼靠同步转向躲避捕食者。', layer: 'mid', pattern: 'plain', school: true },
         angler: { id: 'angler', name: '深海鮟鱇鱼', scientificName: 'Lophiiformes', category: '深海鱼', hp: 2, speed: 12, score: 32, rarity: 'epic', width: 58, height: 39, primaryColor: '#171425', accentColor: '#c18cff', tailSegments: 2, waterDepth: '深', conservationStatus: '无危', funFact: '头顶发光的诱饵灯能在黑暗中吸引猎物。', layer: 'deep', pattern: 'angler', special: 'glow' },
         turtle: { id: 'turtle', name: '绿海龟', scientificName: 'Chelonia mydas', category: '保护动物', hp: 3, speed: 18, score: 0, rarity: 'legendary', width: 62, height: 49, primaryColor: '#4caa76', accentColor: '#d7b86e', tailSegments: 2, waterDepth: '浅', conservationStatus: '濒危', funFact: '海龟容易把漂浮的塑料袋误认为水母。', layer: 'surface', pattern: 'turtle', protected: true },
         whale: { id: 'whale', name: '蓝鲸', scientificName: 'Balaenoptera musculus', category: '保护动物', hp: 7, speed: 10, score: 0, rarity: 'legendary', width: 112, height: 62, primaryColor: '#477cc5', accentColor: '#8deaff', tailSegments: 3, waterDepth: '深', conservationStatus: '濒危', funFact: '蓝鲸是地球上体型最大的动物。', layer: 'deep', pattern: 'whale', protected: true, boss: true },
-        shark: { id: 'shark', name: '机械黄金鲨', scientificName: 'Carcharodon aurum', category: 'BOSS', hp: 8, speed: 15, score: 120, rarity: 'legendary', width: 108, height: 56, primaryColor: '#d7a83d', accentColor: '#70eaff', tailSegments: 3, waterDepth: '中', conservationStatus: '易危', funFact: '鲨鱼通过持续游动让水流过鳃部呼吸。', layer: 'mid', pattern: 'shark', special: 'boss', boss: true },
+        shark: { id: 'shark', name: '大白鲨', scientificName: 'Carcharodon carcharias', category: 'BOSS', hp: 8, speed: 15, score: 120, rarity: 'legendary', width: 108, height: 56, primaryColor: '#778795', accentColor: '#f5f8ff', tailSegments: 3, waterDepth: '中', conservationStatus: '易危', funFact: '大白鲨通过持续游动让水流过鳃部呼吸。', layer: 'mid', pattern: 'shark', special: 'boss', boss: true },
         bomb: { id: 'bomb', name: '炸弹鱼', scientificName: 'Torpedo piscis', category: '特殊鱼种', hp: 1, speed: 22, score: 40, rarity: 'epic', width: 48, height: 31, primaryColor: '#ed5366', accentColor: '#ffd166', tailSegments: 2, waterDepth: '中', conservationStatus: '无危', funFact: '炸弹鱼的爆炸会惊吓周围鱼群。', layer: 'mid', pattern: 'bomb', special: 'bomb' },
         blackhole: { id: 'blackhole', name: '黑洞鱼', scientificName: 'Abyssus vorago', category: '特殊鱼种', hp: 3, speed: 9, score: 55, rarity: 'epic', width: 54, height: 42, primaryColor: '#19152d', accentColor: '#ad75ff', tailSegments: 2, waterDepth: '深', conservationStatus: '无危', funFact: '黑洞鱼会扰动附近的水流和漂浮垃圾。', layer: 'deep', pattern: 'blackhole', special: 'blackhole' }
       };
       const capturedCounts = Object.fromEntries(Object.keys(FISH_TYPES).map(id => [id, 0]));
-      const three = { renderer: null, scene: null, camera: null, objects: new Map(), ready: false };
       class Garbage {
         constructor(type) {
           this.type = type; this.x = rand(30, W - 30); this.y = rand(H * .22, H * .88);
@@ -281,45 +278,13 @@
         }
         draw() { drawFish(this); }
       }
-      function initThreeFishLayer() {
-        if (!window.THREE) return;
-        three.renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
-        three.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-        three.renderer.setSize(W, H, false);
-        three.scene = new THREE.Scene();
-        three.camera = new THREE.PerspectiveCamera(42, W / H, .1, 100);
-        three.camera.position.z = 18;
-        three.scene.add(new THREE.AmbientLight(0x9deaff, 1.8));
-        const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-4, 8, 10); three.scene.add(key);
-        three.ready = true;
+      function setAimScreen(x, y) {
+        targetAim.x = clamp(x, 0, W); targetAim.y = clamp(y, 0, H);
       }
-      function createThreeFish(f) {
-        const p = f.profile || f, group = new THREE.Group();
-        const bodyMat = new THREE.MeshStandardMaterial({ color: p.primaryColor || '#70d8e8', roughness: .42, metalness: p.boss ? .65 : .08, emissive: p.special === 'glow' || p.boss ? new THREE.Color(p.accentColor) : 0x000000, emissiveIntensity: p.boss ? .55 : .8 });
-        const body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), bodyMat);
-        body.scale.set((p.width || 40) / 36, (p.height || 24) / 36, .7); group.add(body);
-        const tail = new THREE.Mesh(new THREE.ConeGeometry(.55, 1.45, 4), new THREE.MeshStandardMaterial({ color: p.accentColor || '#bdeeff', emissive: p.accentColor || '#000000', emissiveIntensity: .25 }));
-        tail.rotation.z = Math.PI / 2; tail.position.x = -(p.width || 40) / 36 * .95; group.add(tail);
-        group.userData = { body, tail, phase: f.phase, fish: f };
-        three.scene.add(group); three.objects.set(f, group);
-      }
-      function updateThreeFish(now) {
-        if (!three.ready) return;
-        const live = new Set(fish);
-        three.objects.forEach((group, f) => {
-          if (!live.has(f) || f.dead) { three.scene.remove(group); three.objects.delete(f); return; }
-          if (!group.parent) three.scene.add(group);
-          const depth = f.layer === 'deep' ? -2.8 : f.layer === 'mid' ? -1 : 1;
-          group.position.set((f.x / W - .5) * 18, (.5 - f.y / H) * 10, depth);
-          group.rotation.y = f.vx < 0 ? Math.PI : 0;
-          group.rotation.z = Math.sin(now / 500 + f.phase) * .07 + (f.frightened > 0 ? .14 : 0);
-          group.rotation.x = Math.sin(now / 720 + f.phase) * .05;
-          group.userData.tail.rotation.y = Math.sin(now / 85 + f.phase) * .42;
-          group.userData.body.material.emissiveIntensity = f.flash > 0 ? 2.5 : (f.boss ? .8 : .35);
-          if (f.gold) group.userData.body.material.color.set('#ffd166');
-        });
-        fish.forEach(f => { if (!f.dead && !three.objects.has(f)) createThreeFish(f); });
-        three.renderer.render(three.scene, three.camera);
+      function updateAim(dt) {
+        // Fixed Lerp factor keeps camera hand jitter smooth and predictable.
+        aim.x += (targetAim.x - aim.x) * .2;
+        aim.y += (targetAim.y - aim.y) * .2;
       }
 
       function resize() {
@@ -327,13 +292,13 @@
         W = innerWidth; H = innerHeight; game.width = W * ratio; game.height = H * ratio;
         game.style.width = W + 'px'; game.style.height = H + 'px'; ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         aim.x = clamp(aim.x, 0, W); aim.y = clamp(aim.y, 0, H);
-        if (three.ready) { three.renderer.setSize(W, H, false); three.camera.aspect = W / H; three.camera.updateProjectionMatrix(); }
+        targetAim.x = clamp(targetAim.x, 0, W); targetAim.y = clamp(targetAim.y, 0, H);
       }
       addEventListener('resize', resize); resize();
 
       function spawnFish() {
         const roll = Math.random();
-        const typeId = roll < .25 ? 'clownfish' : roll < .4 ? 'sardine' : roll < .52 ? 'butterflyfish' : roll < .64 ? 'snapper' :
+        const typeId = roll < .22 ? 'clownfish' : roll < .34 ? 'sardine' : roll < .45 ? 'butterflyfish' : roll < .55 ? 'snapper' : roll < .63 ? 'tang' :
           roll < .73 ? 'shark' : roll < .81 ? 'turtle' : roll < .87 ? 'whale' : roll < .92 ? 'angler' : roll < .96 ? 'bomb' : 'blackhole';
         const d = FISH_TYPES[typeId];
         const fromLeft = Math.random() < .5;
@@ -344,7 +309,6 @@
         if (d.school && fish.length < 22) for (let i = 0; i < 4; i++) create(fromLeft ? -d.width - i * 25 : W + d.width + i * 25, layerY + i * 18);
       }
       for (let i = 0; i < 15; i++) spawnFish();
-      initThreeFishLayer();
       resize();
 
       function initAudio() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -524,7 +488,7 @@
         handLandmarks = result.multiHandLandmarks?.[0] || null;
         if (!handLandmarks) { pinch = false; InputState.feeding = false; InputState.handSweep = false; previousTip = null; tipHistory = []; speed = 0; return; }
         const tip = handLandmarks[8], thumb = handLandmarks[4];
-        aim.x = clamp((1 - tip.x) * W, 0, W); aim.y = clamp(tip.y * H, 0, H);
+        setAimScreen((1 - tip.x) * W, tip.y * H);
         const now = performance.now(), pinchDistance = Math.hypot(tip.x - thumb.x, tip.y - thumb.y);
         pinch = pinchDistance < .075;
         power = pinch ? clamp(Math.max(power, (0.075 - pinchDistance) / .055 * 100) + .12, 0, 100) : power;
@@ -573,12 +537,14 @@
         InputState.power = power; InputState.charging = charging; InputState.speed = speed;
         if (mode === 'keyboard') {
           const move = 360 * dt;
-          if (keys.has('ArrowLeft') || keys.has('a')) aim.x -= move;
-          if (keys.has('ArrowRight') || keys.has('d')) aim.x += move;
-          if (keys.has('ArrowUp') || keys.has('w')) aim.y -= move;
-          if (keys.has('ArrowDown') || keys.has('s')) aim.y += move;
-          aim.x = clamp(aim.x, 0, W); aim.y = clamp(aim.y, 0, H);
+          let keyboardX = targetAim.x, keyboardY = targetAim.y;
+          if (keys.has('ArrowLeft') || keys.has('a')) keyboardX -= move;
+          if (keys.has('ArrowRight') || keys.has('d')) keyboardX += move;
+          if (keys.has('ArrowUp') || keys.has('w')) keyboardY -= move;
+          if (keys.has('ArrowDown') || keys.has('s')) keyboardY += move;
+          setAimScreen(keyboardX, keyboardY);
         }
+        updateAim(dt);
         if (now > nextGarbageAt) { spawnGarbage(); nextGarbageAt = now + rand(7000, 12000); }
         garbage.forEach(item => item.update(dt));
         if (garbage.some(item => item.life < 1 && !item.dead)) score = Math.max(0, score - dt * 2);
@@ -599,7 +565,6 @@
           if (p.y < -5) { p.y = H + 5; p.x = rand(0, W); }
         });
         InputState.aim = aim;
-        updateThreeFish(now);
         document.body.classList.toggle('gold-fever-active', now < goldFeverUntil);
         scoreEl.textContent = '金币 ' + score; powerBar.style.width = power + '%'; powerText.textContent = Math.round(power) + '%';
         powerBar.classList.toggle('full', power >= 99);
@@ -607,9 +572,12 @@
       }
       function drawFish(f) {
         const p = f.profile || f;
-        const wag = Math.sin(visualTime * 8 + f.phase) * .16;
+        const direction = f.vx >= 0 ? 1 : -1;
+        const targetRotation = Math.atan2(Math.sin(visualTime * .7 + f.phase) * 5, Math.abs(f.vx) + 1) + (f.frightened > 0 ? direction * .12 : 0);
+        f.rotation = (f.rotation || 0) + (targetRotation - (f.rotation || 0)) * .14;
+        const wag = Math.sin(visualTime * (7 + p.speed * .04) - 0 * .4 + f.phase) * .12;
         const shake = (f.juice || 0) * Math.sin(visualTime * 90) * .5;
-        ctx.save(); ctx.translate(f.x + shake, f.y); if (f.vx < 0) ctx.scale(-1, 1); ctx.rotate(wag);
+        ctx.save(); ctx.translate(f.x + shake, f.y); ctx.scale(direction, 1); ctx.rotate(f.rotation);
         const fw = p.width || f.r * 2, fh = p.height || f.r * 1.4;
         if (p.special === 'glow' || p.special === 'blackhole') {
           const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, fw * 1.5);
@@ -627,6 +595,15 @@
         } else if (p.pattern === 'diamond') {
           ctx.beginPath(); ctx.moveTo(-fw * .55, 0); ctx.lineTo(0, -fh * .5); ctx.lineTo(fw * .55, 0); ctx.lineTo(0, fh * .5); ctx.closePath(); ctx.fill();
           ctx.fillStyle = p.accentColor; ctx.globalAlpha = .7; ctx.fillRect(-fw * .08, -fh * .5, fw * .16, fh); ctx.globalAlpha = 1;
+        } else if (p.pattern === 'tang') {
+          ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#07152e'; ctx.beginPath(); ctx.moveTo(-fw * .08, -fh * .42); ctx.lineTo(fw * .18, -fh * .42); ctx.lineTo(fw * .05, fh * .42); ctx.lineTo(-fw * .2, fh * .42); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = p.accentColor; ctx.beginPath(); ctx.moveTo(fw * .3, -fh * .3); ctx.lineTo(fw * .55, -fh * .5); ctx.lineTo(fw * .55, fh * .5); ctx.lineTo(fw * .3, fh * .3); ctx.closePath(); ctx.fill();
+        } else if (p.pattern === 'shark') {
+          ctx.beginPath(); ctx.ellipse(0, 0, fw * .53, fh * .4, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#e9edf2'; ctx.beginPath(); ctx.ellipse(fw * .12, fh * .15, fw * .4, fh * .22, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = p.primaryColor; ctx.beginPath(); ctx.moveTo(-fw * .08, -fh * .3); ctx.lineTo(fw * .02, -fh * .85); ctx.lineTo(fw * .16, -fh * .3); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#dff8ff'; ctx.shadowBlur = 8; ctx.shadowColor = '#70eaff'; ctx.beginPath(); ctx.arc(fw * .36, -fh * .12, 3, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
         } else if (p.pattern === 'angler') {
           ctx.fillStyle = f.flash > 0 ? '#fff' : p.primaryColor; ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
           ctx.fillStyle = '#fff'; for (let i = -2; i <= 2; i++) { ctx.beginPath();ctx.moveTo(fw*.2+i*7,fh*.2);ctx.lineTo(fw*.2+i*7+4,fh*.42);ctx.lineTo(fw*.2+i*7+8,fh*.2);ctx.fill(); }
@@ -634,9 +611,16 @@
         } else {
           ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
           if (p.pattern === 'clown') { ctx.fillStyle = p.accentColor; ctx.globalAlpha = .85; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.ellipse(i * fw * .2, 0, fw * .055, fh * .44, 0, 0, TAU); ctx.fill(); } ctx.globalAlpha = 1; }
-          if (p.boss) { ctx.strokeStyle = p.accentColor; ctx.lineWidth = 3; ctx.stroke(); particles.emit(f.x - f.vx * .03, f.y, 1, { color: p.accentColor, speedMin: 3, speedMax: 8, life: .25, sizeMin: 1, sizeMax: 2 }); }
+          if (p.boss) { ctx.strokeStyle = p.accentColor; ctx.lineWidth = 3; ctx.stroke(); }
         }
-        ctx.fillStyle = accentColor; ctx.beginPath(); ctx.moveTo(-fw * .4, 0); ctx.lineTo(-fw * .82, -fh * (.42 + wag)); ctx.lineTo(-fw * .82, fh * (.42 + wag)); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = accentColor;
+        const segments = Math.max(3, p.tailSegments || 3);
+        for (let i = 0; i < segments; i++) {
+          const phase = Math.sin(visualTime * (7 + p.speed * .04) - i * .4 + f.phase);
+          const x = -fw * (.42 + i * .12), size = fw * (.2 - i * .025);
+          ctx.save(); ctx.translate(x, phase * fh * .14); ctx.rotate(phase * .22);
+          ctx.beginPath(); ctx.ellipse(0, 0, size, fh * (.28 - i * .015), 0, 0, TAU); ctx.fill(); ctx.restore();
+        }
         ctx.fillStyle = '#071325'; ctx.beginPath(); ctx.arc(fw * .32, -fh * .1, Math.max(2, fw * .045), 0, TAU); ctx.fill();
         if (f.hp < f.maxHp && !f.dead) {
           ctx.fillStyle = '#240f22'; ctx.fillRect(-fw * .5, -fh * .72, fw, 4); ctx.fillStyle = f.hp / f.maxHp < .35 ? '#ff5364' : '#ffd166'; ctx.fillRect(-fw * .5, -fh * .72, fw * clamp(f.hp / f.maxHp, 0, 1), 4);
@@ -660,7 +644,7 @@
         ctx.save(); if (screenShake) ctx.translate(rand(-screenShake, screenShake), rand(-screenShake, screenShake));
         drawBackground(now);
         ctx.fillStyle = '#b5f3ff99'; ctx.font = '12px system-ui'; ctx.fillText('浅水区', 18, H * .22); ctx.fillText('中水区', 18, H * .46); ctx.fillText('深海区', 18, H * .71);
-        if (!three.ready) fish.forEach(drawFish);
+        fish.forEach(drawFish);
         garbage.forEach(item => item.draw());
         if (now < goldFeverUntil) { ctx.fillStyle = '#ffd16618'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff0a0'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillText('黄金狂热 · 金币 x2 · 三连发', W / 2, H * .16); ctx.textAlign = 'left'; }
         shots.forEach(s => { const p = clamp(s.t, 0, 1), x = W * .5 + (s.tx - W * .5) * p, y = H - 46 + (s.ty - (H - 46)) * p; ctx.strokeStyle = s.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * .5, H - 46); ctx.lineTo(x, y); ctx.stroke(); if (s.hit) { ctx.globalAlpha = 1 - s.t + .2; ctx.strokeStyle = s.color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, s.radius * (1 + (s.t - 1) * 2), 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } });
@@ -672,14 +656,17 @@
         if (now < freezeUntil) { ctx.fillStyle = '#bdeeff18'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#dffaff'; ctx.font = 'bold 28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('❄ 全屏冰冻 ❄', W / 2, H * .18); ctx.textAlign = 'left'; }
         ctx.restore();
       }
-      function loop(now) { const dt=Math.min((now-last)/1000,.05); last=now; update(dt,now); draw(now); requestAnimationFrame(loop); }
+      function loop(now) {
+        const dt = Math.min((now - last) / 1000, .05);
+        last = now; update(dt, now); draw(now); requestAnimationFrame(loop);
+      }
 
       modeSelect.addEventListener('change', event => setMode(event.target.value));
       encyclopediaButton.addEventListener('click', () => { renderEncyclopedia(); encyclopediaDialog.showModal(); animateEncyclopediaThumbs(); });
       closeEncyclopedia.addEventListener('click', () => encyclopediaDialog.close());
       encyclopediaDialog.addEventListener('click', event => { if (event.target === encyclopediaDialog) encyclopediaDialog.close(); });
       game.addEventListener('mousemove', event => {
-        aim.x = event.clientX; aim.y = event.clientY;
+        setAimScreen(event.clientX, event.clientY);
         const now = performance.now();
         mouseHistory.push({ x: event.clientX, y: event.clientY, time: now });
         while (mouseHistory.length > 5) mouseHistory.shift();
