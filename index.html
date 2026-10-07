@@ -51,7 +51,11 @@
     .dialogHead { display: flex; justify-content: space-between; align-items: center; color: var(--cyan); }
     #closeEncyclopedia { border: 0; color: #dff6ff; background: transparent; font-size: 22px; cursor: pointer; }
     #encyclopediaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
-    .factCard { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #0a3152; }
+    .factCard { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: linear-gradient(145deg, #12446a, #061c35); box-shadow: 0 8px 20px #0005, inset 0 0 18px #70eaff12; transform: perspective(600px) rotateX(0deg); transition: transform .2s, border-color .2s; }
+    .factCard:hover { transform: perspective(600px) rotateX(3deg) translateY(-2px); border-color: var(--cyan); }
+    .factCard canvas { display: block; width: 100%; height: 100px; margin-bottom: 8px; border-radius: 8px; background: #03182c; }
+    .factCard h3 { margin: 4px 0; color: var(--gold); }
+    .status-safe { color: #6df39b; } .status-risk { color: #ffd166; } .status-danger { color: #ff7373; }
     .factCard.locked { opacity: .45; filter: grayscale(1); }
     #warning {
       position: fixed; z-index: 10; left: 50%; top: 22%; transform: translateX(-50%);
@@ -176,6 +180,19 @@
         whale: { name: '蓝鲸', layer: '深海区', status: '濒危 · 受保护', food: '磷虾 → 蓝鲸', fact: '蓝鲸是地球上体型最大的动物。', color: '#709dff' },
         angler: { name: '深海鮟鱇鱼', layer: '深海区', status: '无危', food: '小鱼 → 鮟鱇鱼', fact: '头顶发光的“灯笼”能在黑暗中吸引猎物。', color: '#c18cff' }
       };
+      const FISH_TYPES = {
+        clownfish: { id: 'clownfish', name: '小丑鱼', scientificName: 'Amphiprioninae', category: '珊瑚礁鱼', hp: 1, speed: 34, score: 10, rarity: 'common', width: 42, height: 24, primaryColor: '#f47b35', accentColor: '#fff3df', tailSegments: 3, waterDepth: '浅', conservationStatus: '无危', funFact: '小丑鱼可以在一生中改变性别。', layer: 'surface', pattern: 'clown' },
+        butterflyfish: { id: 'butterflyfish', name: '蝴蝶鱼', scientificName: 'Chaetodontidae', category: '珊瑚礁鱼', hp: 2, speed: 28, score: 20, rarity: 'rare', width: 52, height: 31, primaryColor: '#f7c948', accentColor: '#47d7ff', tailSegments: 2, waterDepth: '浅', conservationStatus: '无危', funFact: '蝴蝶鱼细长的吻部适合从珊瑚缝隙中觅食。', layer: 'surface', pattern: 'diamond' },
+        snapper: { id: 'snapper', name: '红鲷鱼', scientificName: 'Lutjanus campechanus', category: '珊瑚礁鱼', hp: 2, speed: 25, score: 25, rarity: 'rare', width: 55, height: 34, primaryColor: '#ed5366', accentColor: '#ffd166', tailSegments: 2, waterDepth: '中', conservationStatus: '无危', funFact: '红鲷鱼会在珊瑚礁附近组成小群体巡游。', layer: 'mid', pattern: 'diamond' },
+        sardine: { id: 'sardine', name: '小沙丁鱼', scientificName: 'Sardinella spp.', category: '群游鱼', hp: 1, speed: 48, score: 8, rarity: 'common', width: 34, height: 18, primaryColor: '#70d8e8', accentColor: '#e7fbff', tailSegments: 2, waterDepth: '中', conservationStatus: '无危', funFact: '沙丁鱼靠同步转向躲避捕食者。', layer: 'mid', pattern: 'plain', school: true },
+        angler: { id: 'angler', name: '深海鮟鱇鱼', scientificName: 'Lophiiformes', category: '深海鱼', hp: 2, speed: 12, score: 32, rarity: 'epic', width: 58, height: 39, primaryColor: '#171425', accentColor: '#c18cff', tailSegments: 2, waterDepth: '深', conservationStatus: '无危', funFact: '头顶发光的诱饵灯能在黑暗中吸引猎物。', layer: 'deep', pattern: 'angler', special: 'glow' },
+        turtle: { id: 'turtle', name: '绿海龟', scientificName: 'Chelonia mydas', category: '保护动物', hp: 3, speed: 18, score: 0, rarity: 'legendary', width: 62, height: 49, primaryColor: '#4caa76', accentColor: '#d7b86e', tailSegments: 2, waterDepth: '浅', conservationStatus: '濒危', funFact: '海龟容易把漂浮的塑料袋误认为水母。', layer: 'surface', pattern: 'turtle', protected: true },
+        whale: { id: 'whale', name: '蓝鲸', scientificName: 'Balaenoptera musculus', category: '保护动物', hp: 7, speed: 10, score: 0, rarity: 'legendary', width: 112, height: 62, primaryColor: '#477cc5', accentColor: '#8deaff', tailSegments: 3, waterDepth: '深', conservationStatus: '濒危', funFact: '蓝鲸是地球上体型最大的动物。', layer: 'deep', pattern: 'whale', protected: true, boss: true },
+        shark: { id: 'shark', name: '机械黄金鲨', scientificName: 'Carcharodon aurum', category: 'BOSS', hp: 8, speed: 15, score: 120, rarity: 'legendary', width: 108, height: 56, primaryColor: '#d7a83d', accentColor: '#70eaff', tailSegments: 3, waterDepth: '中', conservationStatus: '易危', funFact: '鲨鱼通过持续游动让水流过鳃部呼吸。', layer: 'mid', pattern: 'shark', special: 'boss', boss: true },
+        bomb: { id: 'bomb', name: '炸弹鱼', scientificName: 'Torpedo piscis', category: '特殊鱼种', hp: 1, speed: 22, score: 40, rarity: 'epic', width: 48, height: 31, primaryColor: '#ed5366', accentColor: '#ffd166', tailSegments: 2, waterDepth: '中', conservationStatus: '无危', funFact: '炸弹鱼的爆炸会惊吓周围鱼群。', layer: 'mid', pattern: 'bomb', special: 'bomb' },
+        blackhole: { id: 'blackhole', name: '黑洞鱼', scientificName: 'Abyssus vorago', category: '特殊鱼种', hp: 3, speed: 9, score: 55, rarity: 'epic', width: 54, height: 42, primaryColor: '#19152d', accentColor: '#ad75ff', tailSegments: 2, waterDepth: '深', conservationStatus: '无危', funFact: '黑洞鱼会扰动附近的水流和漂浮垃圾。', layer: 'deep', pattern: 'blackhole', special: 'blackhole' }
+      };
+      const capturedCounts = Object.fromEntries(Object.keys(FISH_TYPES).map(id => [id, 0]));
       class Garbage {
         constructor(type) {
           this.type = type; this.x = rand(30, W - 30); this.y = rand(H * .22, H * .88);
@@ -192,6 +209,39 @@
       const rand = (a, b) => a + Math.random() * (b - a);
       const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
       const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      class Fish {
+        constructor(typeId, options = {}) {
+          this.profile = FISH_TYPES[typeId] || FISH_TYPES.clownfish;
+          Object.assign(this, this.profile);
+          this.id = this.profile.id; this.value = this.score; this.r = Math.max(this.width, this.height) * .5;
+          this.x = options.x ?? 0; this.y = options.y ?? H * .5; this.vx = options.vx ?? this.speed;
+          this.hp = this.profile.hp; this.maxHp = this.profile.hp; this.phase = rand(0, TAU);
+          this.dead = false; this.flash = 0; this.juice = 0; this.frightened = 0; this.fleeDirection = 1;
+          this.schoolId = options.schoolId || null; this.aiTimer = rand(1, 4);
+        }
+        update(dt, now) {
+          if (this.dead) return;
+          this.flash = Math.max(0, this.flash - dt); this.juice = Math.max(0, this.juice - dt * 22);
+          this.frightened = Math.max(0, this.frightened - dt); this.aiTimer -= dt;
+          const direction = Math.sign(this.vx) || 1;
+          if (this.frightened > 0) this.vx = direction * this.speed * 2 * this.fleeDirection;
+          else if (this.boss && this.aiTimer <= 0) { this.vx = -direction * this.speed; this.aiTimer = rand(4, 8); triggerShake(2); }
+          else if (this.schoolId) {
+            const schoolmates = fish.filter(other => other !== this && other.schoolId === this.schoolId && !other.dead);
+            if (schoolmates.length) {
+              const center = schoolmates.reduce((sum, other) => sum + other.x, 0) / schoolmates.length;
+              this.vx += clamp(center - this.x, -30, 30) * dt;
+              this.vx = clamp(this.vx, -this.speed * 1.2, this.speed * 1.2);
+            }
+          }
+          this.x += this.vx * dt; this.y += Math.sin(now / 700 + this.phase) * dt * (this.schoolId ? 11 : 5);
+        }
+        hit(damage, sourceX) {
+          this.hp -= damage; this.flash = .22; this.juice = 5;
+          if (Math.abs(this.x - sourceX) < 180 && this.hp > 0) { this.frightened = 1.5; this.fleeDirection = this.x > sourceX ? 1 : -1; }
+        }
+        draw() { drawFish(this); }
+      }
 
       function resize() {
         const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -202,23 +252,15 @@
       addEventListener('resize', resize); resize();
 
       function spawnFish() {
-        const type = Math.random();
-        const defs = [
-          { id: 'clownfish', name: '小丑鱼', r: 16, hp: 1, value: 10, speed: 34, color: '#ff9f68', layer: 'surface' },
-          { id: 'clownfish', name: '小鱼', r: 14, hp: 1, value: 8, speed: 38, color: '#70eaff', layer: 'surface' },
-          { id: 'shark', name: '鲨鱼', r: 43, hp: 5, value: 80, speed: 15, color: '#b6c7d9', layer: 'mid' },
-          { id: 'turtle', name: '绿海龟', r: 25, hp: 3, value: 0, speed: 18, color: '#65d68a', layer: 'surface', protected: true },
-          { id: 'whale', name: '蓝鲸', r: 52, hp: 7, value: 0, speed: 10, color: '#709dff', layer: 'deep', protected: true },
-          { id: 'angler', name: '鮟鱇鱼', r: 23, hp: 2, value: 32, speed: 12, color: '#c18cff', layer: 'deep', special: 'glow' },
-          { id: 'bomb', name: '炸弹鱼', r: 21, hp: 1, value: 40, speed: 22, color: '#ff5e65', layer: 'mid', special: 'bomb' },
-          { id: 'blackhole', name: '黑洞鱼', r: 25, hp: 3, value: 55, speed: 9, color: '#19152d', layer: 'deep', special: 'blackhole' }
-        ];
-        let d = type < .38 ? defs[0] : type < .58 ? defs[1] : type < .73 ? defs[2] : type < .83 ? defs[3] : type < .9 ? defs[4] : defs[5];
-        if (type > .96) d = defs[7]; else if (type > .92) d = defs[6];
+        const roll = Math.random();
+        const typeId = roll < .25 ? 'clownfish' : roll < .4 ? 'sardine' : roll < .52 ? 'butterflyfish' : roll < .64 ? 'snapper' :
+          roll < .73 ? 'shark' : roll < .81 ? 'turtle' : roll < .87 ? 'whale' : roll < .92 ? 'angler' : roll < .96 ? 'bomb' : 'blackhole';
+        const d = FISH_TYPES[typeId];
         const fromLeft = Math.random() < .5;
         const layerY = d.layer === 'surface' ? rand(H * .2, H * .42) : d.layer === 'mid' ? rand(H * .4, H * .68) : rand(H * .65, H * .9);
-        fish.push({ ...d, x: fromLeft ? -d.r * 2 : W + d.r * 2, y: layerY,
-          vx: (fromLeft ? 1 : -1) * d.speed, hp: d.hp, maxHp: d.hp, phase: rand(0, TAU), dead: false });
+        const schoolId = d.school ? `school-${Math.floor(performance.now() / 3000)}` : null;
+        fish.push(new Fish(typeId, { x: fromLeft ? -d.width : W + d.width, y: layerY, vx: (fromLeft ? 1 : -1) * d.speed, schoolId }));
+        if (d.school && fish.length < 22) for (let i = 0; i < 4; i++) fish.push(new Fish(typeId, { x: fromLeft ? -d.width - i * 25 : W + d.width + i * 25, y: layerY + i * 18, vx: (fromLeft ? 1 : -1) * d.speed, schoolId }));
       }
       for (let i = 0; i < 15; i++) spawnFish();
 
@@ -232,16 +274,45 @@
       }
       function triggerShake(amount = 5) { screenShake = Math.max(screenShake, amount); }
       function unlockFact(id) {
-        if (!FishFactsData[id] || unlockedFacts.has(id)) return;
+        if (!FISH_TYPES[id] || unlockedFacts.has(id)) return;
         unlockedFacts.add(id); renderEncyclopedia();
+        if (gameStarted && !encyclopediaDialog.open) {
+          statusEl.textContent = `新物种图鉴已解锁：${FISH_TYPES[id].name}`;
+          encyclopediaDialog.showModal(); animateEncyclopediaThumbs();
+        }
       }
       function renderEncyclopedia() {
-        encyclopediaGrid.innerHTML = Object.entries(FishFactsData).map(([id, fact]) => {
+        encyclopediaGrid.innerHTML = Object.entries(FISH_TYPES).map(([id, type]) => {
           const unlocked = unlockedFacts.has(id);
-          return `<article class="factCard ${unlocked ? '' : 'locked'}"><h3>${unlocked ? fact.name : '???'}</h3>` +
-            `<div>生活水层：${unlocked ? fact.layer : '未知'}</div><div>保护级别：${unlocked ? fact.status : '未知'}</div>` +
-            `<div>食物链：${unlocked ? fact.food : '捕获后解锁'}</div><p>${unlocked ? fact.fact : '探索海洋以解锁知识。'}</p></article>`;
+          const statusClass = type.conservationStatus === '无危' ? 'status-safe' : type.conservationStatus === '易危' ? 'status-risk' : 'status-danger';
+          return `<article class="factCard ${unlocked ? '' : 'locked'}"><canvas data-fish-thumb="${id}" width="360" height="150"></canvas>` +
+            `<h3>${unlocked ? type.name : '???'} <small>${unlocked ? type.rarity.toUpperCase() : ''}</small></h3>` +
+            `<div><em>${unlocked ? type.scientificName : 'Unknown species'}</em></div>` +
+            `<div>分类：${unlocked ? type.category : '未知'} · 水层：${unlocked ? type.waterDepth : '未知'}</div>` +
+            `<div class="${statusClass}">保护等级：${unlocked ? type.conservationStatus : '未知'}</div>` +
+            `<div>捕获次数：${capturedCounts[id] || 0}</div><p>${unlocked ? type.funFact : '捕获或观察该物种以解锁知识。'}</p></article>`;
         }).join('');
+        encyclopediaGrid.querySelectorAll('[data-fish-thumb]').forEach(canvas => {
+          const type = FISH_TYPES[canvas.dataset.fishThumb];
+          drawFishThumbnail(canvas, type, unlockedFacts.has(type.id));
+        });
+      }
+      function drawFishThumbnail(canvas, type, unlocked) {
+        const thumbCtx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+        thumbCtx.clearRect(0, 0, w, h); thumbCtx.fillStyle = '#03182c'; thumbCtx.fillRect(0, 0, w, h);
+        thumbCtx.globalAlpha = unlocked ? 1 : .3;
+        thumbCtx.save(); thumbCtx.translate(w / 2, h / 2 + Math.sin(performance.now() / 500) * 5); thumbCtx.scale(1.35, 1.35);
+        const gradient = thumbCtx.createLinearGradient(-type.width, 0, type.width, 0);
+        gradient.addColorStop(0, type.primaryColor); gradient.addColorStop(1, type.accentColor);
+        thumbCtx.fillStyle = gradient; thumbCtx.beginPath(); thumbCtx.ellipse(0, 0, type.width * .48, type.height * .42, 0, 0, TAU); thumbCtx.fill();
+        thumbCtx.fillStyle = type.accentColor; thumbCtx.beginPath(); thumbCtx.moveTo(-type.width * .4, 0); thumbCtx.lineTo(-type.width * .8, -type.height * .45); thumbCtx.lineTo(-type.width * .8, type.height * .45); thumbCtx.closePath(); thumbCtx.fill();
+        thumbCtx.fillStyle = '#071325'; thumbCtx.beginPath(); thumbCtx.arc(type.width * .27, -type.height * .1, 3, 0, TAU); thumbCtx.fill();
+        thumbCtx.restore(); thumbCtx.globalAlpha = 1;
+      }
+      function animateEncyclopediaThumbs() {
+        if (!encyclopediaDialog.open) return;
+        encyclopediaGrid.querySelectorAll('[data-fish-thumb]').forEach(canvas => drawFishThumbnail(canvas, FISH_TYPES[canvas.dataset.fishThumb], unlockedFacts.has(canvas.dataset.fishThumb)));
+        requestAnimationFrame(animateEncyclopediaThumbs);
       }
       function ecologyWarning(message) {
         warningEl.textContent = message; warningEl.style.display = 'block';
@@ -261,7 +332,7 @@
       }
       function triggerSpecial(f) {
         if (f.special === 'bomb') {
-          fish.forEach(other => { if (other !== f && Math.hypot(other.x - f.x, other.y - f.y) < 130) { other.hp -= 2; effects.push({ x: other.x, y: other.y, r: 3, life: .4, max: .4, color: '#ff5e65' }); } });
+          fish.forEach(other => { if (other !== f && Math.hypot(other.x - f.x, other.y - f.y) < 130) { if (typeof other.hit === 'function') other.hit(2, f.x); effects.push({ x: other.x, y: other.y, r: 3, life: .4, max: .4, color: '#ff5e65' }); } });
           ecologyWarning('炸弹鱼爆炸：附近鱼类受到连环冲击！');
         } else if (f.special === 'blackhole') {
           garbage.forEach(item => { item.x += (f.x - item.x) * .7; item.y += (f.y - item.y) * .7; });
@@ -325,17 +396,18 @@
         fish.forEach(f => {
           if (f.dead || Math.hypot(f.x - s.tx, f.y - s.ty) > s.radius + f.r) return;
           unlockFact(f.id);
-          f.hp -= s.damage;
-          f.flash = .22; f.juice = 5;
+          f.hit(s.damage, s.tx);
           effects.push({ x: f.x, y: f.y, r: 2, life: .45, max: .45, color: s.color });
           if (f.hp <= 0) {
             f.dead = true;
             if (f.protected) { score -= 50; ecologyWarning(`${f.name}为受保护物种，请勿误捕！金币 -50`); }
             else {
+              capturedCounts[f.id] = (capturedCounts[f.id] || 0) + 1;
               caught++; score += f.value; texts.push({ x: f.x, y: f.y, value: f.value, life: 1 });
-              particles.emit(f.x, f.y, 14, { color: '#ffd166', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
+              particles.emit(f.x, f.y, 14, { color: f.accentColor || '#ffd166', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
               if (f.value >= 50) triggerShake(7);
               triggerSpecial(f);
+              renderEncyclopedia();
             }
           }
         });
@@ -412,16 +484,16 @@
         feedFish();
         if (now - lastMigration > 30000) {
           migrationUntil = now + 10000; lastMigration = now;
-          for (let i = 0; i < 8; i++) fish.push({ id: 'migration', name: '黄金鱼', r: 13, hp: 1, maxHp: 1, value: 35,
-            speed: 50, color: '#ffd166', x: -30 - i * 38, y: H * .34 + i * 22, vx: 1, phase: 0, dead: false, gold: true });
+          for (let i = 0; i < 8; i++) {
+            const migrant = new Fish('sardine', { x: -30 - i * 38, y: H * .34 + i * 22, vx: 50, schoolId: 'migration' });
+            migrant.id = 'migration'; migrant.name = '黄金鱼'; migrant.value = migrant.score = 35; migrant.primaryColor = '#ffd166'; migrant.accentColor = '#fff1a8'; migrant.gold = true;
+            fish.push(migrant);
+          }
           ecologyWarning('黄金鱼群潮来袭！整齐阵型限时出现。');
         }
         if (now - lastShot > 800 && fish.length < 22) spawnFish();
         const frozen = now < freezeUntil;
-        fish.forEach(f => {
-          f.flash = Math.max(0, (f.flash || 0) - dt); f.juice = Math.max(0, (f.juice || 0) - dt * 22);
-          if (!f.dead && !frozen) { f.x += f.vx * dt; f.y += Math.sin(now / 700 + f.phase) * dt * 5; }
-        });
+        fish.forEach(f => { if (!frozen) f.update(dt, now); });
         for (let i = fish.length - 1; i >= 0; i--) if (fish[i].dead || fish[i].x < -120 || fish[i].x > W + 120) fish.splice(i, 1);
         shots.forEach(s => { s.t += dt / s.duration; if (s.t >= 1 && !s.hit) { s.hit = true; capture(s); } });
         while (shots.length && shots[0].t > 1.25) shots.shift();
@@ -438,18 +510,42 @@
         cannonLevelEl.textContent = cannonLevel; freezeText.textContent = frozen ? Math.ceil((freezeUntil - now) / 1000) + 's' : '就绪';
       }
       function drawFish(f) {
+        const p = f.profile || f;
         const wag = Math.sin(visualTime * 8 + f.phase) * .16;
         const shake = (f.juice || 0) * Math.sin(visualTime * 90) * .5;
         ctx.save(); ctx.translate(f.x + shake, f.y); if (f.vx < 0) ctx.scale(-1, 1); ctx.rotate(wag);
-        if (f.special === 'glow') {
-          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, f.r * 3);
-          glow.addColorStop(0, '#d7b5ff88'); glow.addColorStop(1, '#c18cff00'); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, f.r * 3, 0, TAU); ctx.fill();
+        const fw = p.width || f.r * 2, fh = p.height || f.r * 1.4;
+        if (p.special === 'glow' || p.special === 'blackhole') {
+          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, fw * 1.5);
+          glow.addColorStop(0, `${p.accentColor || '#c18cff'}99`); glow.addColorStop(1, `${p.accentColor || '#c18cff'}00`); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, fw * 1.5, 0, TAU); ctx.fill();
         }
-        ctx.shadowBlur = f.special === 'glow' ? 18 : 0; ctx.shadowColor = f.color;
-        ctx.fillStyle = f.flash > 0 ? '#fff' : f.color;
-        ctx.beginPath(); ctx.ellipse(0, 0, f.r * 1.35, f.r * .7, 0, 0, TAU); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(-f.r, 0); ctx.lineTo(-f.r * 1.9, -f.r * (.7 + wag)); ctx.lineTo(-f.r * 1.9, f.r * (.7 + wag)); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#062d52'; ctx.beginPath(); ctx.arc(f.r * .65, -f.r * .2, 3, 0, TAU); ctx.fill();
+        ctx.shadowBlur = p.special === 'glow' || p.boss ? 18 : 0; ctx.shadowColor = p.accentColor;
+        const primaryColor = f.primaryColor || p.primaryColor, accentColor = f.accentColor || p.accentColor;
+        const body = ctx.createLinearGradient(-fw, -fh, fw, fh); body.addColorStop(0, f.flash > 0 ? '#fff' : primaryColor); body.addColorStop(1, accentColor);
+        ctx.fillStyle = body;
+        if (p.pattern === 'turtle') {
+          ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .48, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = p.accentColor; ctx.lineWidth = 2;
+          for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * fw * .22, -fh * .4); ctx.lineTo(i * fw * .22, fh * .4); ctx.stroke(); }
+          ctx.beginPath(); ctx.arc(fw * .58, 0, fh * .22, 0, TAU); ctx.fill();
+          ctx.fillStyle = primaryColor; [[-.4,-.45],[.25,-.45],[-.4,.45],[.25,.45]].forEach(([x,y]) => { ctx.save();ctx.translate(fw*x,fh*y);ctx.rotate(wag);ctx.beginPath();ctx.ellipse(0,0,fw*.17,fh*.18,0,0,TAU);ctx.fill();ctx.restore(); });
+        } else if (p.pattern === 'diamond') {
+          ctx.beginPath(); ctx.moveTo(-fw * .55, 0); ctx.lineTo(0, -fh * .5); ctx.lineTo(fw * .55, 0); ctx.lineTo(0, fh * .5); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = p.accentColor; ctx.globalAlpha = .7; ctx.fillRect(-fw * .08, -fh * .5, fw * .16, fh); ctx.globalAlpha = 1;
+        } else if (p.pattern === 'angler') {
+          ctx.fillStyle = f.flash > 0 ? '#fff' : p.primaryColor; ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = '#fff'; for (let i = -2; i <= 2; i++) { ctx.beginPath();ctx.moveTo(fw*.2+i*7,fh*.2);ctx.lineTo(fw*.2+i*7+4,fh*.42);ctx.lineTo(fw*.2+i*7+8,fh*.2);ctx.fill(); }
+          ctx.strokeStyle = p.accentColor;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(fw*.1,-fh*.3);ctx.quadraticCurveTo(fw*.35,-fh*.8,fw*.55,-fh*.62);ctx.stroke();ctx.fillStyle=p.accentColor;ctx.beginPath();ctx.arc(fw*.55,-fh*.62,6,0,TAU);ctx.fill();
+        } else {
+          ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
+          if (p.pattern === 'clown') { ctx.fillStyle = p.accentColor; ctx.globalAlpha = .85; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.ellipse(i * fw * .2, 0, fw * .055, fh * .44, 0, 0, TAU); ctx.fill(); } ctx.globalAlpha = 1; }
+          if (p.boss) { ctx.strokeStyle = p.accentColor; ctx.lineWidth = 3; ctx.stroke(); particles.emit(f.x - f.vx * .03, f.y, 1, { color: p.accentColor, speedMin: 3, speedMax: 8, life: .25, sizeMin: 1, sizeMax: 2 }); }
+        }
+        ctx.fillStyle = accentColor; ctx.beginPath(); ctx.moveTo(-fw * .4, 0); ctx.lineTo(-fw * .82, -fh * (.42 + wag)); ctx.lineTo(-fw * .82, fh * (.42 + wag)); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#071325'; ctx.beginPath(); ctx.arc(fw * .32, -fh * .1, Math.max(2, fw * .045), 0, TAU); ctx.fill();
+        if (f.hp < f.maxHp && !f.dead) {
+          ctx.fillStyle = '#240f22'; ctx.fillRect(-fw * .5, -fh * .72, fw, 4); ctx.fillStyle = f.hp / f.maxHp < .35 ? '#ff5364' : '#ffd166'; ctx.fillRect(-fw * .5, -fh * .72, fw * clamp(f.hp / f.maxHp, 0, 1), 4);
+        }
+        if (p.boss) { ctx.fillStyle = '#301827'; ctx.fillRect(-fw * .5, -fh * .9, fw, 6); ctx.fillStyle = '#ff5364'; ctx.fillRect(-fw * .5, -fh * .9, fw * clamp(f.hp / f.maxHp, 0, 1), 6); }
         ctx.restore();
       }
       function drawBackground(now) {
@@ -482,7 +578,7 @@
       function loop(now) { const dt=Math.min((now-last)/1000,.05); last=now; update(dt,now); draw(now); requestAnimationFrame(loop); }
 
       modeSelect.addEventListener('change', event => setMode(event.target.value));
-      encyclopediaButton.addEventListener('click', () => { renderEncyclopedia(); encyclopediaDialog.showModal(); });
+      encyclopediaButton.addEventListener('click', () => { renderEncyclopedia(); encyclopediaDialog.showModal(); animateEncyclopediaThumbs(); });
       closeEncyclopedia.addEventListener('click', () => encyclopediaDialog.close());
       encyclopediaDialog.addEventListener('click', event => { if (event.target === encyclopediaDialog) encyclopediaDialog.close(); });
       game.addEventListener('mousemove', event => {
