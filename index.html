@@ -6,85 +6,89 @@
   <title>手势控制捕鱼游戏</title>
   <style>
     :root {
-      color-scheme: dark;
-      --panel: rgba(5, 22, 46, .82);
-      --line: rgba(144, 224, 255, .32);
-      --cyan: #70eaff;
-      --gold: #ffd166;
+      color-scheme: light;
+      --paper: #f2efe6;
+      --ink: rgba(20, 20, 20, .85);
+      --soft-ink: rgba(80, 80, 80, .4);
+      --vermilion: #a82828;
+      --panel: rgba(242, 239, 230, .88);
+      --line: rgba(168, 40, 40, .55);
+      --cyan: #365b58;
+      --gold: #a82828;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; background: #031326; font-family: system-ui, -apple-system, sans-serif; }
+    html, body { margin: 0; min-height: 100%; background: var(--paper); color: var(--ink); font-family: "KaiTi", "STKaiti", "Ma Shan Zheng", serif; }
     body { overflow: hidden; }
-    #gameCanvas { display: block; width: 100vw; height: 100vh; background: #062d52; }
+    #gameCanvas { display: block; width: 100vw; height: 100vh; background: var(--paper); }
     #debugCanvas {
       position: fixed; z-index: 3; top: 16px; right: 16px; width: min(28vw, 320px);
       aspect-ratio: 4 / 3; border: 2px solid var(--cyan); border-radius: 12px;
-      background: #051525; box-shadow: 0 8px 30px #0008; transform: scaleX(-1);
+      background: #d8d1c2; box-shadow: 0 8px 30px #5b463333; transform: scaleX(-1); filter: sepia(.2);
     }
     #hud {
       position: fixed; z-index: 4; top: 16px; left: 16px; width: min(380px, calc(100vw - 32px));
-      padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel);
-      backdrop-filter: blur(10px); pointer-events: none;
+      padding: 14px 16px; border: 2px solid var(--vermilion); border-radius: 4px; background: var(--panel);
+      backdrop-filter: blur(8px); pointer-events: none; box-shadow: 5px 5px 0 rgba(168,40,40,.12);
     }
     .row { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
-    .title { color: var(--cyan); font-weight: 800; letter-spacing: .08em; }
-    .stats { margin-top: 8px; color: #dff6ff; font-size: 14px; }
-    .bar { height: 8px; margin-top: 5px; border-radius: 8px; background: #ffffff1c; overflow: hidden; }
-    .fill { height: 100%; width: 0; transition: width .08s linear; background: linear-gradient(90deg, #39d98a, var(--gold), #ff6b6b, #70eaff); background-size: 220% 100%; animation: energyFlow 1.2s linear infinite; }
+    .title { color: var(--vermilion); font-weight: 900; letter-spacing: .08em; }
+    .stats { margin-top: 8px; color: var(--ink); font-size: 15px; }
+    .bar { height: 9px; margin-top: 5px; border-radius: 0; background: #1c1c1c22; overflow: hidden; border: 1px solid #1c1c1c44; }
+    .fill { height: 100%; width: 0; transition: width .08s linear; background: linear-gradient(90deg, #555, var(--vermilion), #222); background-size: 220% 100%; animation: energyFlow 1.2s linear infinite; }
     .fill.full { animation: energyFlow .35s linear infinite, powerPulse .6s ease-in-out infinite; }
     @keyframes energyFlow { to { background-position: 220% 0; } }
     @keyframes powerPulse { 50% { filter: brightness(2); box-shadow: 0 0 16px var(--gold); } }
-    #status { margin-top: 8px; color: #a9c7d9; font-size: 12px; line-height: 1.5; }
+    #status { margin-top: 8px; color: #5d554a; font-size: 13px; line-height: 1.5; }
     #modePanel {
       position: fixed; z-index: 6; top: 16px; right: 16px; padding: 10px 12px;
-      border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
-      backdrop-filter: blur(10px); color: #dff6ff; font-size: 13px;
+      border: 2px solid var(--vermilion); border-radius: 4px; background: var(--panel);
+      backdrop-filter: blur(8px); color: var(--ink); font-size: 14px; box-shadow: 4px 4px 0 rgba(168,40,40,.12);
     }
-    #modeSelect { margin-left: 6px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; color: #dff6ff; background: #082746; }
+    #modeSelect { margin-left: 6px; padding: 5px 8px; border: 1px solid var(--vermilion); border-radius: 2px; color: var(--ink); background: #f8f4e9; font-family: inherit; }
     #encyclopediaButton {
       position: fixed; z-index: 6; top: 70px; right: 16px; padding: 8px 12px;
-      border: 1px solid var(--line); border-radius: 10px; color: #dff6ff; background: var(--panel);
-      cursor: pointer;
+      border: 2px solid var(--vermilion); border-radius: 2px; color: var(--vermilion); background: var(--panel);
+      cursor: pointer; font-family: inherit; box-shadow: 3px 3px 0 rgba(168,40,40,.15);
     }
-    dialog { width: min(680px, calc(100vw - 28px)); max-height: 80vh; border: 1px solid var(--line); border-radius: 16px; color: #dff6ff; background: #061d38; }
-    dialog::backdrop { background: #00101dcc; backdrop-filter: blur(4px); }
-    .dialogHead { display: flex; justify-content: space-between; align-items: center; color: var(--cyan); }
-    #closeEncyclopedia { border: 0; color: #dff6ff; background: transparent; font-size: 22px; cursor: pointer; }
+    dialog { width: min(680px, calc(100vw - 28px)); max-height: 80vh; border: 3px solid var(--vermilion); border-radius: 2px; color: var(--ink); background: var(--paper); box-shadow: 8px 8px 0 rgba(168,40,40,.2); }
+    dialog::backdrop { background: #4b403366; backdrop-filter: blur(3px); }
+    .dialogHead { display: flex; justify-content: space-between; align-items: center; color: var(--vermilion); }
+    #closeEncyclopedia { border: 0; color: var(--vermilion); background: transparent; font-size: 22px; cursor: pointer; }
     #encyclopediaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
-    .factCard { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: linear-gradient(145deg, #12446a, #061c35); box-shadow: 0 8px 20px #0005, inset 0 0 18px #70eaff12; transform: perspective(600px) rotateX(0deg); transition: transform .2s, border-color .2s; }
+    .factCard { padding: 12px; border: 1px solid var(--vermilion); border-radius: 2px; background: rgba(255,252,242,.7); box-shadow: 3px 3px 0 rgba(168,40,40,.12); transform: rotate(-.3deg); transition: transform .2s, border-color .2s; }
     .factCard:hover { transform: perspective(600px) rotateX(3deg) translateY(-2px); border-color: var(--cyan); }
-    .factCard canvas { display: block; width: 100%; height: 100px; margin-bottom: 8px; border-radius: 8px; background: #03182c; }
-    .factCard h3 { margin: 4px 0; color: var(--gold); }
+    .factCard canvas { display: block; width: 100%; height: 100px; margin-bottom: 8px; border-radius: 0; background: #eee8d8; }
+    .factCard h3 { margin: 4px 0; color: var(--vermilion); }
     .status-safe { color: #6df39b; } .status-risk { color: #ffd166; } .status-danger { color: #ff7373; }
     .factCard.locked { opacity: .45; filter: grayscale(1); }
     #warning {
       position: fixed; z-index: 10; left: 50%; top: 22%; transform: translateX(-50%);
       display: none; width: min(420px, calc(100vw - 30px)); padding: 16px; border: 2px solid #ff6b6b;
-      border-radius: 14px; color: #fff; background: #671f2add; text-align: center; font-weight: 700;
+      border-radius: 2px; color: var(--vermilion); background: var(--paper); text-align: center; font-weight: 700; box-shadow: 5px 5px 0 rgba(168,40,40,.2);
     }
     #unlockToast {
       position: fixed; z-index: 12; top: 112px; right: 18px; opacity: 0; transform: translateY(-10px);
-      padding: 11px 15px; border: 1px solid var(--gold); border-radius: 12px; color: #fff6c2;
-      background: #382b0ddd; box-shadow: 0 0 22px #ffd16666; transition: opacity .25s, transform .25s;
+      padding: 11px 15px; border: 2px solid var(--vermilion); border-radius: 2px; color: var(--vermilion);
+      background: var(--paper); box-shadow: 4px 4px 0 rgba(168,40,40,.2); transition: opacity .25s, transform .25s;
     }
     #unlockToast.show { opacity: 1; transform: translateY(0); }
     #goldFever {
       position: fixed; z-index: 7; top: 120px; left: 50%; transform: translateX(-50%);
       display: none; padding: 9px 18px; border: 1px solid var(--gold); border-radius: 999px;
-      color: #fff4b0; background: #6a421ccc; box-shadow: 0 0 24px #ffd166aa; font-weight: 900;
+      color: var(--vermilion); background: var(--paper); box-shadow: 4px 4px 0 rgba(168,40,40,.2); font-weight: 900;
     }
     #gameOverDialog { text-align: center; }
-    #gameOverDialog button { padding: 8px 14px; border: 1px solid var(--cyan); border-radius: 8px; color: #dff6ff; background: #0a3152; cursor: pointer; }
+    #gameOverDialog button { padding: 8px 14px; border: 2px solid var(--vermilion); border-radius: 2px; color: var(--vermilion); background: var(--paper); cursor: pointer; font-family: inherit; }
     #roundUnlocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 14px 0; text-align: left; }
-    .roundUnlock { padding: 8px; border: 1px solid var(--gold); border-radius: 8px; color: #ffeaa7; }
-    button.roundUnlock { width: 100%; background: #5a421d55; text-align: left; cursor: pointer; }
+    .roundUnlock { padding: 8px; border: 1px solid var(--vermilion); border-radius: 2px; color: var(--vermilion); }
+    button.roundUnlock { width: 100%; background: #a8282810; text-align: left; cursor: pointer; font-family: inherit; }
     .cyber { text-shadow: 0 0 8px currentColor; box-shadow: 0 0 18px #70eaff22, inset 0 0 20px #70eaff0c; }
     body.gold-fever-active #gameCanvas { filter: saturate(1.35) sepia(.25); }
     #start {
       position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%);
-      padding: 14px 22px; border: 1px solid var(--cyan); border-radius: 999px; color: #031326;
-      background: var(--cyan); font-size: 16px; font-weight: 800; cursor: pointer;
-      box-shadow: 0 0 25px #70eaff66;
+      padding: 14px 22px; border: 2px solid var(--vermilion); border-radius: 2px; color: var(--paper);
+      background: var(--vermilion); font-size: 17px; font-weight: 800; cursor: pointer;
+      box-shadow: 5px 5px 0 rgba(80,30,20,.22); font-family: inherit;
     }
     #start[hidden] { display: none; }
     @media (max-width: 600px) {
@@ -104,23 +108,23 @@
     </select>
   </label>
   <section id="hud">
-    <div class="row"><span class="title">GESTURE FISHING</span><strong id="score">金币 0</strong></div>
-    <div class="stats row"><span>蓄力 POWER</span><strong id="powerText">0%</strong></div>
+    <div class="row"><span class="title">墨戏 · 游鱼</span><strong id="score">墨宝 0</strong></div>
+    <div class="stats row"><span>蓄力 · 墨韵</span><strong id="powerText">0%</strong></div>
     <div class="bar"><div class="fill" id="powerBar"></div></div>
     <div class="stats row"><span>炮台等级 <b id="cannonLevel">1</b></span><span>冰冻 <b id="freezeText">就绪</b></span></div>
-    <div id="status">手势：食指瞄准，捏合蓄力并松开射击。鼠标：移动瞄准，按住左键蓄力。键盘：WASD/方向键移动，空格蓄力。</div>
+    <div id="status">手势：食指落笔，捏合蓄墨；鼠标与键盘亦可执笔入画。</div>
   </section>
   <button id="encyclopediaButton">海洋图鉴</button>
   <dialog id="encyclopediaDialog">
     <div class="dialogHead"><h2>海洋图鉴</h2><button id="closeEncyclopedia" aria-label="关闭">×</button></div>
-    <p>捕获或观察新物种即可解锁知识卡片。受保护物种不会加入积分。</p>
+    <p>捕获或观察新物种即可解锁知识卡片。受保护物种不会加入雅兴。</p>
     <div id="encyclopediaGrid"></div>
   </dialog>
   <div id="warning" role="alert"></div>
   <div id="unlockToast" role="status"></div>
   <div id="goldFever">★ 黄金狂热 · 无限三连发 ★</div>
   <dialog id="gameOverDialog">
-    <div class="dialogHead"><h2>本局结算</h2></div>
+    <div class="dialogHead"><h2>本局落款</h2></div>
     <p id="finalScore"></p>
     <h3>本次新解锁物种</h3>
     <div id="roundUnlocks"></div>
@@ -192,7 +196,7 @@
         draw() {
           this.items.forEach(p => {
             ctx.save(); ctx.globalAlpha = clamp(p.life / p.max, 0, 1); ctx.fillStyle = p.color;
-            if (p.text) { ctx.font = `${Math.max(12, p.size * 4)}px system-ui`; ctx.fillText(p.text, p.x, p.y); }
+            if (p.text) { ctx.font = `${Math.max(12, p.size * 4)}px KaiTi, serif`; ctx.fillText(p.text, p.x, p.y); }
             else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill(); }
             ctx.restore();
           });
@@ -401,7 +405,7 @@
         const count = performance.now() < goldFeverUntil ? 3 : 1;
         for (let i = 0; i < count; i++) shots.push({ x: W * .5, y: H - 46, tx: aim.x + (i - 1) * 28, ty: aim.y, t: 0, duration: fast ? .32 : .48,
           radius: r, damage: 1 + power / 42, color: performance.now() < goldFeverUntil ? '#ffd166' : colors[cannonLevel - 1] });
-        particles.emit(W * .5, H - 46, 14, { color: '#70eaff', speedMin: 25, speedMax: 95, gravity: -20, life: .45, sizeMin: 1, sizeMax: 3 });
+        particles.emit(W * .5, H - 46, 14, { color: '#202020', speedMin: 25, speedMax: 95, gravity: -20, life: .45, sizeMin: 1, sizeMax: 3 });
         tone(190 + power * 3, .16, 'square', .07); power = 0; charging = false;
       }
       function beginCharge() {
@@ -447,8 +451,8 @@
       function capture(s) {
         let caught = 0;
         clearGarbageAt(s.tx, s.ty, s.radius);
-        particles.emit(s.tx, s.ty, 30, { color: s.color, speedMin: 35, speedMax: 180, gravity: 30, life: .8, sizeMin: 1.5, sizeMax: 4 });
-        effects.push({ x: s.tx, y: s.ty, r: 6, life: .65, max: .65, color: s.color, net: true });
+        particles.emit(s.tx, s.ty, 30, { color: '#282828', speedMin: 35, speedMax: 180, gravity: 30, life: .8, sizeMin: 1.5, sizeMax: 4 });
+        effects.push({ x: s.tx, y: s.ty, r: 6, life: .65, max: .65, color: '#282828', net: true, ink: true });
         fish.forEach(f => {
           if (f.dead || Math.hypot(f.x - s.tx, f.y - s.ty) > s.radius + f.r) return;
           f.hit(s.damage, s.tx);
@@ -456,12 +460,12 @@
           if (f.hp <= 0) {
             f.dead = true;
             unlockFact(f.id);
-            if (f.protected) { score -= 50; ecologyWarning(`${f.name}为受保护物种，请勿误捕！金币 -50`); }
+            if (f.protected) { score -= 50; ecologyWarning(`${f.name}为受保护物种，请勿误捕！墨宝 -50`); }
             else {
               capturedCounts[f.id] = (capturedCounts[f.id] || 0) + 1;
               if (f.gold) startGoldFever();
               caught++; score += f.value * (performance.now() < goldFeverUntil || f.gold ? 2 : 1); texts.push({ x: f.x, y: f.y, value: f.value, life: 1 });
-              particles.emit(f.x, f.y, 14, { color: f.accentColor || '#ffd166', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
+              particles.emit(f.x, f.y, 14, { color: '#a82828', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
               if (f.value >= 50) triggerShake(7);
               triggerSpecial(f);
               renderEncyclopedia();
@@ -477,7 +481,7 @@
       function endGame() {
         if (gameOver) return;
         gameOver = true; stopCamera(); charging = false; power = 0;
-        finalScoreEl.textContent = `本局金币：${Math.max(0, Math.round(score))}`;
+        finalScoreEl.textContent = `本局雅兴：${Math.max(0, Math.round(score))}　墨宝：${Math.max(0, Math.round(score))}`;
         roundUnlocksEl.innerHTML = newUnlocksThisRound.size
           ? [...newUnlocksThisRound].map(id => `<button class="roundUnlock" data-read-fish="${id}">${FISH_TYPES[id]?.name || id}<br><small>点击查看图鉴详情</small></button>`).join('')
           : '<div class="roundUnlock">本局没有新解锁物种</div>';
@@ -566,94 +570,93 @@
         });
         InputState.aim = aim;
         document.body.classList.toggle('gold-fever-active', now < goldFeverUntil);
-        scoreEl.textContent = '金币 ' + score; powerBar.style.width = power + '%'; powerText.textContent = Math.round(power) + '%';
+        scoreEl.textContent = '墨宝 ' + Math.max(0, Math.round(score)); powerBar.style.width = power + '%'; powerText.textContent = Math.round(power) + '%';
         powerBar.classList.toggle('full', power >= 99);
         cannonLevelEl.textContent = cannonLevel; freezeText.textContent = frozen ? Math.ceil((freezeUntil - now) / 1000) + 's' : '就绪';
       }
       function drawFish(f) {
-        const p = f.profile || f;
-        const direction = f.vx >= 0 ? 1 : -1;
-        const targetRotation = Math.atan2(Math.sin(visualTime * .7 + f.phase) * 5, Math.abs(f.vx) + 1) + (f.frightened > 0 ? direction * .12 : 0);
+        const p = f.profile || f, direction = f.vx >= 0 ? 1 : -1;
+        const targetRotation = Math.atan2(Math.sin(visualTime * .7 + f.phase) * 5, Math.abs(f.vx) + 1);
         f.rotation = (f.rotation || 0) + (targetRotation - (f.rotation || 0)) * .14;
-        const wag = Math.sin(visualTime * (7 + p.speed * .04) - 0 * .4 + f.phase) * .12;
         const shake = (f.juice || 0) * Math.sin(visualTime * 90) * .5;
-        ctx.save(); ctx.translate(f.x + shake, f.y); ctx.scale(direction, 1); ctx.rotate(f.rotation);
         const fw = p.width || f.r * 2, fh = p.height || f.r * 1.4;
-        if (p.special === 'glow' || p.special === 'blackhole') {
-          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, fw * 1.5);
-          glow.addColorStop(0, `${p.accentColor || '#c18cff'}99`); glow.addColorStop(1, `${p.accentColor || '#c18cff'}00`); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, fw * 1.5, 0, TAU); ctx.fill();
+        const ink = 'rgba(20,20,20,.85)', wash = 'rgba(80,80,80,.4)', cinnabar = '#a82828';
+        ctx.save(); ctx.translate(f.x + shake, f.y); ctx.scale(direction, 1); ctx.rotate(f.rotation);
+        if (p.special === 'glow') {
+          const glow = ctx.createRadialGradient(fw * .35, -fh * .45, 2, fw * .35, -fh * .45, fw * 1.5);
+          glow.addColorStop(0, 'rgba(168,40,40,.55)'); glow.addColorStop(1, 'rgba(168,40,40,0)');
+          ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(fw * .35, -fh * .45, fw * 1.5, 0, TAU); ctx.fill();
         }
-        ctx.shadowBlur = p.special === 'glow' || p.boss ? 18 : 0; ctx.shadowColor = p.accentColor;
-        const primaryColor = f.primaryColor || p.primaryColor, accentColor = f.accentColor || p.accentColor;
-        const body = ctx.createLinearGradient(-fw, -fh, fw, fh); body.addColorStop(0, f.flash > 0 ? '#fff' : primaryColor); body.addColorStop(1, accentColor);
-        ctx.fillStyle = body;
-        if (p.pattern === 'turtle') {
-          ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .48, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = p.accentColor; ctx.lineWidth = 2;
-          for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * fw * .22, -fh * .4); ctx.lineTo(i * fw * .22, fh * .4); ctx.stroke(); }
-          ctx.beginPath(); ctx.arc(fw * .58, 0, fh * .22, 0, TAU); ctx.fill();
-          ctx.fillStyle = primaryColor; [[-.4,-.45],[.25,-.45],[-.4,.45],[.25,.45]].forEach(([x,y]) => { ctx.save();ctx.translate(fw*x,fh*y);ctx.rotate(wag);ctx.beginPath();ctx.ellipse(0,0,fw*.17,fh*.18,0,0,TAU);ctx.fill();ctx.restore(); });
-        } else if (p.pattern === 'diamond') {
-          ctx.beginPath(); ctx.moveTo(-fw * .55, 0); ctx.lineTo(0, -fh * .5); ctx.lineTo(fw * .55, 0); ctx.lineTo(0, fh * .5); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = p.accentColor; ctx.globalAlpha = .7; ctx.fillRect(-fw * .08, -fh * .5, fw * .16, fh); ctx.globalAlpha = 1;
+        ctx.shadowColor = 'rgba(20,20,20,.22)'; ctx.shadowBlur = 6;
+        const body = ctx.createRadialGradient(-fw * .15, -fh * .25, 2, 0, 0, fw);
+        body.addColorStop(0, f.flash > 0 ? '#fff' : (f.gold ? '#b18a2c' : 'rgba(65,65,65,.9)')); body.addColorStop(.65, f.gold ? '#6f551b' : ink); body.addColorStop(1, 'rgba(10,10,10,.65)');
+        ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = wash; ctx.beginPath(); ctx.ellipse(fw * .05, fh * .18, fw * .35, fh * .17, 0, 0, TAU); ctx.fill();
+        if (p.pattern === 'clown') {
+          ctx.fillStyle = '#777'; ctx.globalAlpha = .7;
+          for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.ellipse(i * fw * .19, 0, fw * .055, fh * .43, 0, 0, TAU); ctx.fill(); }
+          ctx.globalAlpha = 1; ctx.fillStyle = cinnabar; ctx.beginPath(); ctx.arc(fw * .28, -fh * .06, fw * .07, 0, TAU); ctx.fill();
         } else if (p.pattern === 'tang') {
-          ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = '#07152e'; ctx.beginPath(); ctx.moveTo(-fw * .08, -fh * .42); ctx.lineTo(fw * .18, -fh * .42); ctx.lineTo(fw * .05, fh * .42); ctx.lineTo(-fw * .2, fh * .42); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = p.accentColor; ctx.beginPath(); ctx.moveTo(fw * .3, -fh * .3); ctx.lineTo(fw * .55, -fh * .5); ctx.lineTo(fw * .55, fh * .5); ctx.lineTo(fw * .3, fh * .3); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#24427a'; ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(-fw * .08, -fh * .42); ctx.lineTo(fw * .18, -fh * .42); ctx.lineTo(fw * .05, fh * .42); ctx.lineTo(-fw * .2, fh * .42); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#d6a929'; ctx.beginPath(); ctx.moveTo(fw * .3, -fh * .3); ctx.lineTo(fw * .57, -fh * .5); ctx.lineTo(fw * .57, fh * .5); ctx.lineTo(fw * .3, fh * .3); ctx.closePath(); ctx.fill();
+        } else if (p.pattern === 'turtle') {
+          ctx.fillStyle = 'rgba(25,75,52,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .48, 0, 0, TAU); ctx.fill();
+          ctx.strokeStyle = 'rgba(210,185,105,.75)'; ctx.lineWidth = 2;
+          for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * fw * .22, -fh * .4); ctx.lineTo(i * fw * .22, fh * .4); ctx.stroke(); }
+          ctx.beginPath(); ctx.moveTo(-fw*.5,0);ctx.lineTo(fw*.5,0);ctx.stroke();
+          ctx.fillStyle = wash; [[-.4,-.45],[.25,-.45],[-.4,.45],[.25,.45]].forEach(([x,y]) => { ctx.save();ctx.translate(fw*x,fh*y);ctx.rotate(Math.sin(visualTime*5+f.phase)*.35);ctx.beginPath();ctx.ellipse(0,0,fw*.17,fh*.18,0,0,TAU);ctx.fill();ctx.restore(); });
         } else if (p.pattern === 'shark') {
-          ctx.beginPath(); ctx.ellipse(0, 0, fw * .53, fh * .4, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = '#e9edf2'; ctx.beginPath(); ctx.ellipse(fw * .12, fh * .15, fw * .4, fh * .22, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = p.primaryColor; ctx.beginPath(); ctx.moveTo(-fw * .08, -fh * .3); ctx.lineTo(fw * .02, -fh * .85); ctx.lineTo(fw * .16, -fh * .3); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = '#dff8ff'; ctx.shadowBlur = 8; ctx.shadowColor = '#70eaff'; ctx.beginPath(); ctx.arc(fw * .36, -fh * .12, 3, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
+          ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(0, 0, fw * .53, fh * .4, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = 'rgba(210,210,205,.72)'; ctx.beginPath(); ctx.ellipse(fw*.1,fh*.15,fw*.4,fh*.22,0,0,TAU);ctx.fill();
+          ctx.fillStyle = ink; ctx.beginPath();ctx.moveTo(-fw*.08,-fh*.3);ctx.lineTo(fw*.02,-fh*.85);ctx.lineTo(fw*.16,-fh*.3);ctx.closePath();ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.beginPath();ctx.arc(fw*.36,-fh*.12,3,0,TAU);ctx.fill();
         } else if (p.pattern === 'angler') {
-          ctx.fillStyle = f.flash > 0 ? '#fff' : p.primaryColor; ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = '#fff'; for (let i = -2; i <= 2; i++) { ctx.beginPath();ctx.moveTo(fw*.2+i*7,fh*.2);ctx.lineTo(fw*.2+i*7+4,fh*.42);ctx.lineTo(fw*.2+i*7+8,fh*.2);ctx.fill(); }
-          ctx.strokeStyle = p.accentColor;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(fw*.1,-fh*.3);ctx.quadraticCurveTo(fw*.35,-fh*.8,fw*.55,-fh*.62);ctx.stroke();ctx.fillStyle=p.accentColor;ctx.beginPath();ctx.arc(fw*.55,-fh*.62,6,0,TAU);ctx.fill();
-        } else {
-          ctx.beginPath(); ctx.ellipse(0, 0, fw * .5, fh * .42, 0, 0, TAU); ctx.fill();
-          if (p.pattern === 'clown') { ctx.fillStyle = p.accentColor; ctx.globalAlpha = .85; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.ellipse(i * fw * .2, 0, fw * .055, fh * .44, 0, 0, TAU); ctx.fill(); } ctx.globalAlpha = 1; }
-          if (p.boss) { ctx.strokeStyle = p.accentColor; ctx.lineWidth = 3; ctx.stroke(); }
+          ctx.fillStyle = ink; ctx.beginPath();ctx.ellipse(0,0,fw*.5,fh*.42,0,0,TAU);ctx.fill();
+          ctx.fillStyle = '#eee'; for (let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(fw*.2+i*7,fh*.2);ctx.lineTo(fw*.2+i*7+4,fh*.42);ctx.lineTo(fw*.2+i*7+8,fh*.2);ctx.fill();}
+          ctx.strokeStyle = cinnabar;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(fw*.1,-fh*.3);ctx.quadraticCurveTo(fw*.35,-fh*.8,fw*.55,-fh*.62);ctx.stroke();ctx.fillStyle=cinnabar;ctx.beginPath();ctx.arc(fw*.55,-fh*.62,6,0,TAU);ctx.fill();
         }
-        ctx.fillStyle = accentColor;
         const segments = Math.max(3, p.tailSegments || 3);
         for (let i = 0; i < segments; i++) {
           const phase = Math.sin(visualTime * (7 + p.speed * .04) - i * .4 + f.phase);
-          const x = -fw * (.42 + i * .12), size = fw * (.2 - i * .025);
-          ctx.save(); ctx.translate(x, phase * fh * .14); ctx.rotate(phase * .22);
-          ctx.beginPath(); ctx.ellipse(0, 0, size, fh * (.28 - i * .015), 0, 0, TAU); ctx.fill(); ctx.restore();
+          ctx.save(); ctx.translate(-fw * (.42 + i * .12), phase * fh * .14); ctx.rotate(phase * .22);
+          ctx.fillStyle = i === 0 ? wash : 'rgba(55,55,55,.28)'; ctx.beginPath(); ctx.ellipse(0, 0, fw * (.2 - i * .025), fh * (.28 - i * .015), 0, 0, TAU); ctx.fill(); ctx.restore();
         }
-        ctx.fillStyle = '#071325'; ctx.beginPath(); ctx.arc(fw * .32, -fh * .1, Math.max(2, fw * .045), 0, TAU); ctx.fill();
-        if (f.hp < f.maxHp && !f.dead) {
-          ctx.fillStyle = '#240f22'; ctx.fillRect(-fw * .5, -fh * .72, fw, 4); ctx.fillStyle = f.hp / f.maxHp < .35 ? '#ff5364' : '#ffd166'; ctx.fillRect(-fw * .5, -fh * .72, fw * clamp(f.hp / f.maxHp, 0, 1), 4);
-        }
-        if (p.boss) { ctx.fillStyle = '#301827'; ctx.fillRect(-fw * .5, -fh * .9, fw, 6); ctx.fillStyle = '#ff5364'; ctx.fillRect(-fw * .5, -fh * .9, fw * clamp(f.hp / f.maxHp, 0, 1), 6); }
+        ctx.fillStyle = ink; ctx.beginPath();ctx.arc(fw*.32,-fh*.1,Math.max(2,fw*.045),0,TAU);ctx.fill();
+        if (f.hp < f.maxHp && !f.dead) { ctx.fillStyle = 'rgba(20,20,20,.25)';ctx.fillRect(-fw*.5,-fh*.72,fw,4);ctx.fillStyle=cinnabar;ctx.fillRect(-fw*.5,-fh*.72,fw*clamp(f.hp/f.maxHp,0,1),4); }
+        if (p.boss) { ctx.fillStyle = 'rgba(20,20,20,.35)';ctx.fillRect(-fw*.5,-fh*.9,fw,6);ctx.fillStyle=cinnabar;ctx.fillRect(-fw*.5,-fh*.9,fw*clamp(f.hp/f.maxHp,0,1),6); }
         ctx.restore();
       }
       function drawBackground(now) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, H); gradient.addColorStop(0, '#0b527e'); gradient.addColorStop(.55, '#063456'); gradient.addColorStop(1, '#010b1c');
-        ctx.fillStyle = gradient; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#0a1e3aaa'; ctx.beginPath(); ctx.moveTo(0, H * .76);
+        ctx.fillStyle = '#f2efe6'; ctx.fillRect(0, 0, W, H);
+        const wash = ctx.createLinearGradient(0, 0, 0, H); wash.addColorStop(0, 'rgba(255,255,255,.35)'); wash.addColorStop(1, 'rgba(90,90,90,.12)');
+        ctx.fillStyle = wash; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(45,45,45,.12)'; ctx.beginPath(); ctx.moveTo(0, H * .76);
         for (let x = 0; x <= W; x += 80) ctx.lineTo(x, H * .71 + Math.sin(x * .012) * 35);
         ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
-        ctx.strokeStyle = '#2d9a8c66'; ctx.lineWidth = 5;
+        ctx.strokeStyle = 'rgba(20,20,20,.3)'; ctx.lineWidth = 4;
         for (let x = 35; x < W; x += 120) { ctx.beginPath(); ctx.moveTo(x, H); ctx.quadraticCurveTo(x - 20, H * .82, x + Math.sin(now * .001 + x) * 16, H * .67); ctx.stroke(); }
-        ctx.save(); ctx.globalAlpha = .12; ctx.strokeStyle = '#b7f4ff'; ctx.lineWidth = 2;
+        ctx.save(); ctx.globalAlpha = .16; ctx.strokeStyle = 'rgba(20,20,20,.65)'; ctx.lineWidth = 1.5;
         for (let i = 0; i < 9; i++) { ctx.beginPath(); for (let x = -20; x < W + 20; x += 18) { const y = H * .1 + i * 14 + Math.sin(x * .025 + now * .0007 + i) * 9; if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); } ctx.restore();
-        ambientParticles.forEach(p => { ctx.globalAlpha = .25 + p.size / 6; ctx.fillStyle = '#c8f8ff'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill(); }); ctx.globalAlpha = 1;
+        ctx.save(); ctx.globalAlpha = .08;
+        for (let i = 0; i < 26; i++) { const x = (i * 137) % W, y = (i * 83) % H; ctx.fillStyle = i % 2 ? '#332c24' : '#fff'; ctx.fillRect(x, y, 1, 1); }
+        ctx.restore();
+        ambientParticles.forEach(p => { ctx.globalAlpha = .18 + p.size / 12; ctx.fillStyle = 'rgba(20,20,20,.55)'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill(); }); ctx.globalAlpha = 1;
       }
       function draw(now) {
         ctx.save(); if (screenShake) ctx.translate(rand(-screenShake, screenShake), rand(-screenShake, screenShake));
         drawBackground(now);
-        ctx.fillStyle = '#b5f3ff99'; ctx.font = '12px system-ui'; ctx.fillText('浅水区', 18, H * .22); ctx.fillText('中水区', 18, H * .46); ctx.fillText('深海区', 18, H * .71);
+        ctx.fillStyle = 'rgba(20,20,20,.5)'; ctx.font = '14px KaiTi, STKaiti, serif'; ctx.fillText('浅水 · 留白', 18, H * .22); ctx.fillText('中水 · 淡墨', 18, H * .46); ctx.fillText('深海 · 浓墨', 18, H * .71);
         fish.forEach(drawFish);
         garbage.forEach(item => item.draw());
-        if (now < goldFeverUntil) { ctx.fillStyle = '#ffd16618'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff0a0'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillText('黄金狂热 · 金币 x2 · 三连发', W / 2, H * .16); ctx.textAlign = 'left'; }
-        shots.forEach(s => { const p = clamp(s.t, 0, 1), x = W * .5 + (s.tx - W * .5) * p, y = H - 46 + (s.ty - (H - 46)) * p; ctx.strokeStyle = s.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * .5, H - 46); ctx.lineTo(x, y); ctx.stroke(); if (s.hit) { ctx.globalAlpha = 1 - s.t + .2; ctx.strokeStyle = s.color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, s.radius * (1 + (s.t - 1) * 2), 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } });
-        effects.forEach(e => { ctx.globalAlpha = e.life / e.max; ctx.strokeStyle = e.color; ctx.lineWidth = e.net ? 3 : 2; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, TAU); if (e.net) { ctx.moveTo(e.x - e.r, e.y); ctx.lineTo(e.x + e.r, e.y); ctx.moveTo(e.x, e.y - e.r); ctx.lineTo(e.x, e.y + e.r); } ctx.stroke(); ctx.globalAlpha = 1; });
+        if (now < goldFeverUntil) { ctx.fillStyle = '#a8282810'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#a82828'; ctx.font = 'bold 22px KaiTi, serif'; ctx.textAlign = 'center'; ctx.fillText('黄金狂热 · 墨宝 x2 · 三连发', W / 2, H * .16); ctx.textAlign = 'left'; }
+        shots.forEach(s => { const p = clamp(s.t, 0, 1), x = W * .5 + (s.tx - W * .5) * p, y = H - 46 + (s.ty - (H - 46)) * p; ctx.strokeStyle = 'rgba(20,20,20,.35)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(W * .5, H - 46); ctx.quadraticCurveTo(x - 20, y + 14, x, y); ctx.stroke(); ctx.fillStyle = '#171717'; ctx.beginPath(); ctx.ellipse(x, y, 6 + s.radius * .025, 10, -.35, 0, TAU); ctx.fill(); if (s.hit) { ctx.globalAlpha = Math.max(0, 1 - s.t + .2); ctx.strokeStyle = 'rgba(20,20,20,.7)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, s.radius * (1 + (s.t - 1) * 2), 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } });
+        effects.forEach(e => { ctx.globalAlpha = e.life / e.max; ctx.fillStyle = 'rgba(20,20,20,.12)'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, TAU); ctx.fill(); ctx.strokeStyle = e.color; ctx.lineWidth = e.net ? 3 : 2; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, TAU); if (e.net) { ctx.moveTo(e.x - e.r, e.y); ctx.lineTo(e.x + e.r, e.y); ctx.moveTo(e.x, e.y - e.r); ctx.lineTo(e.x, e.y + e.r); } ctx.stroke(); ctx.globalAlpha = 1; });
         particles.draw();
-        ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.save(); ctx.translate(aim.x, aim.y); ctx.rotate(visualTime * 1.8); ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.moveTo(-28, 0); ctx.lineTo(-8, 0); ctx.moveTo(8, 0); ctx.lineTo(28, 0); ctx.moveTo(0, -28); ctx.lineTo(0, -8); ctx.moveTo(0, 8); ctx.lineTo(0, 28); ctx.stroke(); ctx.restore();
-        ctx.fillStyle = '#d6f5ff'; ctx.fillRect(W / 2 - 34, H - 20, 68, 20); ctx.fillStyle = colors[cannonLevel - 1]; ctx.beginPath(); ctx.arc(W / 2, H - 42, 24, Math.PI, TAU); ctx.fill();
-        texts.forEach(t => { ctx.globalAlpha = t.life; ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#321f50'; ctx.lineWidth = 4; ctx.font = '900 18px system-ui'; ctx.strokeText('+' + t.value + ' 金币', t.x - 25, t.y); ctx.fillText('+' + t.value + ' 金币', t.x - 25, t.y); ctx.globalAlpha = 1; });
-        if (now < freezeUntil) { ctx.fillStyle = '#bdeeff18'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#dffaff'; ctx.font = 'bold 28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('❄ 全屏冰冻 ❄', W / 2, H * .18); ctx.textAlign = 'left'; }
+        ctx.strokeStyle = 'rgba(168,40,40,.85)'; ctx.lineWidth = 2; ctx.save(); ctx.translate(aim.x, aim.y); ctx.rotate(visualTime * 1.8); ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.moveTo(-28, 0); ctx.lineTo(-8, 0); ctx.moveTo(8, 0); ctx.lineTo(28, 0); ctx.moveTo(0, -28); ctx.lineTo(0, -8); ctx.moveTo(0, 8); ctx.lineTo(0, 28); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = 'rgba(20,20,20,.4)'; ctx.fillRect(W / 2 - 34, H - 20, 68, 20); ctx.fillStyle = '#a82828'; ctx.beginPath(); ctx.arc(W / 2, H - 42, 24, Math.PI, TAU); ctx.fill();
+        texts.forEach(t => { ctx.globalAlpha = t.life; ctx.fillStyle = '#a82828'; ctx.strokeStyle = '#f2efe6'; ctx.lineWidth = 4; ctx.font = '900 18px KaiTi, serif'; ctx.strokeText('+' + t.value + ' 墨宝', t.x - 25, t.y); ctx.fillText('+' + t.value + ' 墨宝', t.x - 25, t.y); ctx.globalAlpha = 1; });
+        if (now < freezeUntil) { ctx.fillStyle = '#365b5815'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#365b58'; ctx.font = 'bold 28px KaiTi, serif'; ctx.textAlign = 'center'; ctx.fillText('❄ 水墨凝霜 ❄', W / 2, H * .18); ctx.textAlign = 'left'; }
         ctx.restore();
       }
       function loop(now) {
