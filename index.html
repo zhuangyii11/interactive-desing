@@ -30,7 +30,10 @@
     .title { color: var(--cyan); font-weight: 800; letter-spacing: .08em; }
     .stats { margin-top: 8px; color: #dff6ff; font-size: 14px; }
     .bar { height: 8px; margin-top: 5px; border-radius: 8px; background: #ffffff1c; overflow: hidden; }
-    .fill { height: 100%; width: 0; transition: width .08s linear; background: linear-gradient(90deg, #39d98a, var(--gold), #ff6b6b); }
+    .fill { height: 100%; width: 0; transition: width .08s linear; background: linear-gradient(90deg, #39d98a, var(--gold), #ff6b6b, #70eaff); background-size: 220% 100%; animation: energyFlow 1.2s linear infinite; }
+    .fill.full { animation: energyFlow .35s linear infinite, powerPulse .6s ease-in-out infinite; }
+    @keyframes energyFlow { to { background-position: 220% 0; } }
+    @keyframes powerPulse { 50% { filter: brightness(2); box-shadow: 0 0 16px var(--gold); } }
     #status { margin-top: 8px; color: #a9c7d9; font-size: 12px; line-height: 1.5; }
     #modePanel {
       position: fixed; z-index: 6; top: 16px; right: 16px; padding: 10px 12px;
@@ -55,6 +58,7 @@
       display: none; width: min(420px, calc(100vw - 30px)); padding: 16px; border: 2px solid #ff6b6b;
       border-radius: 14px; color: #fff; background: #671f2add; text-align: center; font-weight: 700;
     }
+    .cyber { text-shadow: 0 0 8px currentColor; box-shadow: 0 0 18px #70eaff22, inset 0 0 20px #70eaff0c; }
     #start {
       position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%);
       padding: 14px 22px; border: 1px solid var(--cyan); border-radius: 999px; color: #031326;
@@ -128,6 +132,38 @@
       let migrationUntil = 0, nextGarbageAt = performance.now() + 5000, lastMigration = performance.now();
       const keys = new Set(), mouseHistory = [];
       const fish = [], shots = [], effects = [], texts = [], garbage = [];
+      let visualTime = 0, screenShake = 0;
+      class ParticleManager {
+        constructor() { this.items = []; }
+        emit(x, y, count, options = {}) {
+          for (let i = 0; i < count; i++) {
+            const angle = rand(0, TAU), velocity = rand(options.speedMin || 20, options.speedMax || 100);
+            this.items.push({
+              x, y, vx: Math.cos(angle) * velocity, vy: Math.sin(angle) * velocity,
+              life: options.life || .55, max: options.life || .55, size: rand(options.sizeMin || 1.5, options.sizeMax || 4),
+              color: options.color || '#bdeeff', gravity: options.gravity || 0, drag: options.drag || .96,
+              text: options.text || ''
+            });
+          }
+        }
+        update(dt) {
+          this.items.forEach(p => { p.life -= dt; p.vx *= p.drag; p.vy = p.vy * p.drag + p.gravity * dt; p.x += p.vx * dt; p.y += p.vy * dt; });
+          this.items = this.items.filter(p => p.life > 0);
+        }
+        draw() {
+          this.items.forEach(p => {
+            ctx.save(); ctx.globalAlpha = clamp(p.life / p.max, 0, 1); ctx.fillStyle = p.color;
+            if (p.text) { ctx.font = `${Math.max(12, p.size * 4)}px system-ui`; ctx.fillText(p.text, p.x, p.y); }
+            else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill(); }
+            ctx.restore();
+          });
+        }
+      }
+      const particles = new ParticleManager();
+      const ambientParticles = Array.from({ length: 85 }, () => ({
+        x: Math.random() * W, y: Math.random() * H, size: .6 + Math.random() * 1.8,
+        phase: Math.random() * TAU, speed: 5 + Math.random() * 13
+      }));
       const unlockedFacts = new Set();
       const InputState = {
         mode: 'gesture', aim, power: 0, charging: false, speed: 0, mouseDown: false,
@@ -194,6 +230,7 @@
         amp.gain.exponentialRampToValueAtTime(.001, audio.currentTime + duration);
         osc.connect(amp).connect(audio.destination); osc.start(); osc.stop(audio.currentTime + duration);
       }
+      function triggerShake(amount = 5) { screenShake = Math.max(screenShake, amount); }
       function unlockFact(id) {
         if (!FishFactsData[id] || unlockedFacts.has(id)) return;
         unlockedFacts.add(id); renderEncyclopedia();
@@ -237,6 +274,7 @@
         lastShot = performance.now(); const r = 18 + power * .55, fast = speed > 1.05;
         shots.push({ x: W * .5, y: H - 46, tx: aim.x, ty: aim.y, t: 0, duration: fast ? .32 : .48,
           radius: r, damage: 1 + power / 42, color: colors[cannonLevel - 1] });
+        particles.emit(W * .5, H - 46, 14, { color: '#70eaff', speedMin: 25, speedMax: 95, gravity: -20, life: .45, sizeMin: 1, sizeMax: 3 });
         tone(190 + power * 3, .16, 'square', .07); power = 0; charging = false;
       }
       function beginCharge() {
@@ -282,22 +320,30 @@
       function capture(s) {
         let caught = 0;
         clearGarbageAt(s.tx, s.ty, s.radius);
+        particles.emit(s.tx, s.ty, 30, { color: s.color, speedMin: 35, speedMax: 180, gravity: 30, life: .8, sizeMin: 1.5, sizeMax: 4 });
+        effects.push({ x: s.tx, y: s.ty, r: 6, life: .65, max: .65, color: s.color, net: true });
         fish.forEach(f => {
           if (f.dead || Math.hypot(f.x - s.tx, f.y - s.ty) > s.radius + f.r) return;
           unlockFact(f.id);
           f.hp -= s.damage;
+          f.flash = .22; f.juice = 5;
           effects.push({ x: f.x, y: f.y, r: 2, life: .45, max: .45, color: s.color });
           if (f.hp <= 0) {
             f.dead = true;
             if (f.protected) { score -= 50; ecologyWarning(`${f.name}为受保护物种，请勿误捕！金币 -50`); }
-            else { caught++; score += f.value; texts.push({ x: f.x, y: f.y, value: f.value, life: 1 }); triggerSpecial(f); }
+            else {
+              caught++; score += f.value; texts.push({ x: f.x, y: f.y, value: f.value, life: 1 });
+              particles.emit(f.x, f.y, 14, { color: '#ffd166', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
+              if (f.value >= 50) triggerShake(7);
+              triggerSpecial(f);
+            }
           }
         });
         tone(caught ? 720 : 300, .18, 'sine', caught ? .1 : .04);
       }
       function activateFreeze() {
         if (performance.now() < freezeUntil) return;
-        freezeUntil = performance.now() + 15000; tone(880, .5, 'sine', .1);
+        freezeUntil = performance.now() + 15000; triggerShake(9); particles.emit(W / 2, H / 2, 80, { color: '#bdeeff', speedMin: 40, speedMax: 230, life: 1.3, sizeMin: 1, sizeMax: 4 }); tone(880, .5, 'sine', .1);
       }
 
       function processHand(result) {
@@ -347,6 +393,8 @@
       }
 
       function update(dt, now) {
+        visualTime = now / 1000;
+        screenShake = Math.max(0, screenShake - dt * 35);
         updateCharge(now);
         InputState.power = power; InputState.charging = charging; InputState.speed = speed;
         if (mode === 'keyboard') {
@@ -370,33 +418,66 @@
         }
         if (now - lastShot > 800 && fish.length < 22) spawnFish();
         const frozen = now < freezeUntil;
-        fish.forEach(f => { if (!f.dead && !frozen) { f.x += f.vx * dt; f.y += Math.sin(now / 700 + f.phase) * dt * 5; } });
+        fish.forEach(f => {
+          f.flash = Math.max(0, (f.flash || 0) - dt); f.juice = Math.max(0, (f.juice || 0) - dt * 22);
+          if (!f.dead && !frozen) { f.x += f.vx * dt; f.y += Math.sin(now / 700 + f.phase) * dt * 5; }
+        });
         for (let i = fish.length - 1; i >= 0; i--) if (fish[i].dead || fish[i].x < -120 || fish[i].x > W + 120) fish.splice(i, 1);
         shots.forEach(s => { s.t += dt / s.duration; if (s.t >= 1 && !s.hit) { s.hit = true; capture(s); } });
         while (shots.length && shots[0].t > 1.25) shots.shift();
         effects.forEach(e => { e.life -= dt; e.r += dt * 160; }); while (effects.length && effects[0].life <= 0) effects.shift();
         texts.forEach(t => { t.y -= dt * 34; t.life -= dt; }); while (texts.length && texts[0].life <= 0) texts.shift();
+        particles.update(dt);
+        ambientParticles.forEach(p => {
+          p.y -= p.speed * dt; p.x += Math.sin(visualTime * .7 + p.phase) * dt * 5;
+          if (p.y < -5) { p.y = H + 5; p.x = rand(0, W); }
+        });
         InputState.aim = aim;
         scoreEl.textContent = '金币 ' + score; powerBar.style.width = power + '%'; powerText.textContent = Math.round(power) + '%';
+        powerBar.classList.toggle('full', power >= 99);
         cannonLevelEl.textContent = cannonLevel; freezeText.textContent = frozen ? Math.ceil((freezeUntil - now) / 1000) + 's' : '就绪';
       }
-      function draw(now) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, H); gradient.addColorStop(0, '#0a4b78'); gradient.addColorStop(1, '#02182f');
+      function drawFish(f) {
+        const wag = Math.sin(visualTime * 8 + f.phase) * .16;
+        const shake = (f.juice || 0) * Math.sin(visualTime * 90) * .5;
+        ctx.save(); ctx.translate(f.x + shake, f.y); if (f.vx < 0) ctx.scale(-1, 1); ctx.rotate(wag);
+        if (f.special === 'glow') {
+          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, f.r * 3);
+          glow.addColorStop(0, '#d7b5ff88'); glow.addColorStop(1, '#c18cff00'); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, f.r * 3, 0, TAU); ctx.fill();
+        }
+        ctx.shadowBlur = f.special === 'glow' ? 18 : 0; ctx.shadowColor = f.color;
+        ctx.fillStyle = f.flash > 0 ? '#fff' : f.color;
+        ctx.beginPath(); ctx.ellipse(0, 0, f.r * 1.35, f.r * .7, 0, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-f.r, 0); ctx.lineTo(-f.r * 1.9, -f.r * (.7 + wag)); ctx.lineTo(-f.r * 1.9, f.r * (.7 + wag)); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#062d52'; ctx.beginPath(); ctx.arc(f.r * .65, -f.r * .2, 3, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+      function drawBackground(now) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, H); gradient.addColorStop(0, '#0b527e'); gradient.addColorStop(.55, '#063456'); gradient.addColorStop(1, '#010b1c');
         ctx.fillStyle = gradient; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#56c7d522'; ctx.fillRect(0, H * .18, W, H * .24);
-        ctx.fillStyle = '#123a5d33'; ctx.fillRect(0, H * .42, W, H * .25);
-        ctx.fillStyle = '#010b1ccc'; ctx.fillRect(0, H * .67, W, H * .33);
+        ctx.fillStyle = '#0a1e3aaa'; ctx.beginPath(); ctx.moveTo(0, H * .76);
+        for (let x = 0; x <= W; x += 80) ctx.lineTo(x, H * .71 + Math.sin(x * .012) * 35);
+        ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+        ctx.strokeStyle = '#2d9a8c66'; ctx.lineWidth = 5;
+        for (let x = 35; x < W; x += 120) { ctx.beginPath(); ctx.moveTo(x, H); ctx.quadraticCurveTo(x - 20, H * .82, x + Math.sin(now * .001 + x) * 16, H * .67); ctx.stroke(); }
+        ctx.save(); ctx.globalAlpha = .12; ctx.strokeStyle = '#b7f4ff'; ctx.lineWidth = 2;
+        for (let i = 0; i < 9; i++) { ctx.beginPath(); for (let x = -20; x < W + 20; x += 18) { const y = H * .1 + i * 14 + Math.sin(x * .025 + now * .0007 + i) * 9; if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); } ctx.restore();
+        ambientParticles.forEach(p => { ctx.globalAlpha = .25 + p.size / 6; ctx.fillStyle = '#c8f8ff'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill(); }); ctx.globalAlpha = 1;
+      }
+      function draw(now) {
+        ctx.save(); if (screenShake) ctx.translate(rand(-screenShake, screenShake), rand(-screenShake, screenShake));
+        drawBackground(now);
         ctx.fillStyle = '#b5f3ff99'; ctx.font = '12px system-ui'; ctx.fillText('浅水区', 18, H * .22); ctx.fillText('中水区', 18, H * .46); ctx.fillText('深海区', 18, H * .71);
-        ctx.fillStyle = '#ffffff0b'; for (let i=0;i<35;i++) { const x=(i*83+now*.02)%W, y=(i*137+now*.04)%H; ctx.beginPath(); ctx.arc(x,y,1+(i%3),0,TAU);ctx.fill(); }
-        fish.forEach(f => { ctx.save(); ctx.translate(f.x, f.y); if (f.vx < 0) ctx.scale(-1,1); if (f.special === 'glow') { ctx.shadowBlur = 18; ctx.shadowColor = '#c18cff'; } ctx.fillStyle=f.color; ctx.beginPath();ctx.ellipse(0,0,f.r*1.35,f.r*.7,0,0,TAU);ctx.fill();ctx.beginPath();ctx.moveTo(-f.r,0);ctx.lineTo(-f.r*1.9,-f.r*.7);ctx.lineTo(-f.r*1.9,f.r*.7);ctx.closePath();ctx.fill();ctx.fillStyle='#062d52';ctx.beginPath();ctx.arc(f.r*.65,-f.r*.2,3,0,TAU);ctx.fill();ctx.restore(); });
-        garbage.forEach(item => item.draw());
+        fish.forEach(drawFish); garbage.forEach(item => item.draw());
         if (now < migrationUntil) { ctx.fillStyle = '#ffd166'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillText('黄金鱼群潮 · 迁徙中', W / 2, H * .16); ctx.textAlign = 'left'; }
-        shots.forEach(s => { const p = clamp(s.t,0,1), x=W*.5+(s.tx-W*.5)*p, y=H-46+(s.ty-(H-46))*p; ctx.strokeStyle=s.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(W*.5,H-46);ctx.lineTo(x,y);ctx.stroke(); if(s.hit){ctx.globalAlpha=1-s.t+.2;ctx.strokeStyle=s.color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.tx,s.ty,s.radius*(1+(s.t-1)*2),0,TAU);ctx.stroke();ctx.globalAlpha=1;} });
-        effects.forEach(e=>{ctx.globalAlpha=e.life/e.max;ctx.strokeStyle=e.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,TAU);ctx.stroke();ctx.globalAlpha=1;});
-        ctx.strokeStyle='#ffffffaa';ctx.lineWidth=2;ctx.beginPath();ctx.arc(aim.x,aim.y,18,0,TAU);ctx.moveTo(aim.x-28,aim.y);ctx.lineTo(aim.x-8,aim.y);ctx.moveTo(aim.x+8,aim.y);ctx.lineTo(aim.x+28,aim.y);ctx.moveTo(aim.x,aim.y-28);ctx.lineTo(aim.x,aim.y-8);ctx.moveTo(aim.x,aim.y+8);ctx.lineTo(aim.x,aim.y+28);ctx.stroke();
-        ctx.fillStyle='#d6f5ff';ctx.fillRect(W/2-34,H-20,68,20);ctx.fillStyle=colors[cannonLevel-1];ctx.beginPath();ctx.arc(W/2,H-42,24,Math.PI,TAU);ctx.fill();
-        texts.forEach(t=>{ctx.globalAlpha=t.life;ctx.fillStyle='#ffd166';ctx.font='bold 18px system-ui';ctx.fillText('+'+t.value+' 金币',t.x-25,t.y);ctx.globalAlpha=1;});
-        if (now < freezeUntil) { ctx.fillStyle='#bdeeff18';ctx.fillRect(0,0,W,H);ctx.fillStyle='#dffaff';ctx.font='bold 28px system-ui';ctx.textAlign='center';ctx.fillText('❄ 全屏冰冻 ❄',W/2, H*.18);ctx.textAlign='left'; }
+        shots.forEach(s => { const p = clamp(s.t, 0, 1), x = W * .5 + (s.tx - W * .5) * p, y = H - 46 + (s.ty - (H - 46)) * p; ctx.strokeStyle = s.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * .5, H - 46); ctx.lineTo(x, y); ctx.stroke(); if (s.hit) { ctx.globalAlpha = 1 - s.t + .2; ctx.strokeStyle = s.color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, s.radius * (1 + (s.t - 1) * 2), 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } });
+        effects.forEach(e => { ctx.globalAlpha = e.life / e.max; ctx.strokeStyle = e.color; ctx.lineWidth = e.net ? 3 : 2; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, TAU); if (e.net) { ctx.moveTo(e.x - e.r, e.y); ctx.lineTo(e.x + e.r, e.y); ctx.moveTo(e.x, e.y - e.r); ctx.lineTo(e.x, e.y + e.r); } ctx.stroke(); ctx.globalAlpha = 1; });
+        particles.draw();
+        ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.save(); ctx.translate(aim.x, aim.y); ctx.rotate(visualTime * 1.8); ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.moveTo(-28, 0); ctx.lineTo(-8, 0); ctx.moveTo(8, 0); ctx.lineTo(28, 0); ctx.moveTo(0, -28); ctx.lineTo(0, -8); ctx.moveTo(0, 8); ctx.lineTo(0, 28); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = '#d6f5ff'; ctx.fillRect(W / 2 - 34, H - 20, 68, 20); ctx.fillStyle = colors[cannonLevel - 1]; ctx.beginPath(); ctx.arc(W / 2, H - 42, 24, Math.PI, TAU); ctx.fill();
+        texts.forEach(t => { ctx.globalAlpha = t.life; ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#321f50'; ctx.lineWidth = 4; ctx.font = '900 18px system-ui'; ctx.strokeText('+' + t.value + ' 金币', t.x - 25, t.y); ctx.fillText('+' + t.value + ' 金币', t.x - 25, t.y); ctx.globalAlpha = 1; });
+        if (now < freezeUntil) { ctx.fillStyle = '#bdeeff18'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#dffaff'; ctx.font = 'bold 28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('❄ 全屏冰冻 ❄', W / 2, H * .18); ctx.textAlign = 'left'; }
+        ctx.restore();
       }
       function loop(now) { const dt=Math.min((now-last)/1000,.05); last=now; update(dt,now); draw(now); requestAnimationFrame(loop); }
 
