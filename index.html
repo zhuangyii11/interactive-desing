@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手势控制捕鱼游戏</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(5, 22, 46, .82);
+      --line: rgba(144, 224, 255, .32);
+      --cyan: #70eaff;
+      --gold: #ffd166;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #031326; font-family: system-ui, -apple-system, sans-serif; }
+    body { overflow: hidden; }
+    #gameCanvas { display: block; width: 100vw; height: 100vh; background: #062d52; }
+    #debugCanvas {
+      position: fixed; z-index: 3; top: 16px; right: 16px; width: min(28vw, 320px);
+      aspect-ratio: 4 / 3; border: 2px solid var(--cyan); border-radius: 12px;
+      background: #051525; box-shadow: 0 8px 30px #0008; transform: scaleX(-1);
+    }
+    #hud {
+      position: fixed; z-index: 4; top: 16px; left: 16px; width: min(380px, calc(100vw - 32px));
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel);
+      backdrop-filter: blur(10px); pointer-events: none;
+    }
+    .row { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+    .title { color: var(--cyan); font-weight: 800; letter-spacing: .08em; }
+    .stats { margin-top: 8px; color: #dff6ff; font-size: 14px; }
+    .bar { height: 8px; margin-top: 5px; border-radius: 8px; background: #ffffff1c; overflow: hidden; }
+    .fill { height: 100%; width: 0; transition: width .08s linear; background: linear-gradient(90deg, #39d98a, var(--gold), #ff6b6b); }
+    #status { margin-top: 8px; color: #a9c7d9; font-size: 12px; line-height: 1.5; }
+    #start {
+      position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      padding: 14px 22px; border: 1px solid var(--cyan); border-radius: 999px; color: #031326;
+      background: var(--cyan); font-size: 16px; font-weight: 800; cursor: pointer;
+      box-shadow: 0 0 25px #70eaff66;
+    }
+    #start[hidden] { display: none; }
+    @media (max-width: 600px) {
+      #debugCanvas { top: auto; bottom: 12px; right: 12px; width: 150px; }
+      #hud { top: 10px; left: 10px; width: calc(100vw - 20px); }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <canvas id="debugCanvas" width="640" height="480"></canvas>
+  <section id="hud">
+    <div class="row"><span class="title">GESTURE FISHING</span><strong id="score">金币 0</strong></div>
+    <div class="stats row"><span>蓄力 POWER</span><strong id="powerText">0%</strong></div>
+    <div class="bar"><div class="fill" id="powerBar"></div></div>
+    <div class="stats row"><span>炮台等级 <b id="cannonLevel">1</b></span><span>冰冻 <b id="freezeText">就绪</b></span></div>
+    <div id="status">点击“启动摄像头”，用食指瞄准；拇指与食指捏合蓄力，松开射击。✌️切换炮台，🖐️保持 1 秒释放冰冻。</div>
+  </section>
+  <button id="start">启动摄像头与游戏</button>
+  <video id="video" playsinline muted hidden></video>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script>
+    (() => {
+      'use strict';
+      const game = document.getElementById('gameCanvas');
+      const ctx = game.getContext('2d');
+      const debug = document.getElementById('debugCanvas');
+      const dctx = debug.getContext('2d');
+      const video = document.getElementById('video');
+      const start = document.getElementById('start');
+      const scoreEl = document.getElementById('score');
+      const powerBar = document.getElementById('powerBar');
+      const powerText = document.getElementById('powerText');
+      const cannonLevelEl = document.getElementById('cannonLevel');
+      const freezeText = document.getElementById('freezeText');
+      const statusEl = document.getElementById('status');
+      const TAU = Math.PI * 2;
+      const colors = ['#54d7ff', '#ff79c6', '#ffd166', '#a7f36b'];
+      let W = innerWidth, H = innerHeight, last = performance.now(), score = 0;
+      let aim = { x: W * .5, y: H * .7 }, power = 0, cannonLevel = 1;
+      let charging = false, chargeStarted = 0, lastShot = 0, freezeUntil = 0, freezeGestureAt = 0;
+      let handLandmarks = null, previousTip = null, tipHistory = [], speed = 0, pinch = false, peaceWasOn = false;
+      let audio;
+      const fish = [], shots = [], effects = [], texts = [];
+      const rand = (a, b) => a + Math.random() * (b - a);
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+      function resize() {
+        const ratio = Math.min(devicePixelRatio || 1, 2);
+        W = innerWidth; H = innerHeight; game.width = W * ratio; game.height = H * ratio;
+        game.style.width = W + 'px'; game.style.height = H + 'px'; ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        aim.x = clamp(aim.x, 0, W); aim.y = clamp(aim.y, 0, H);
+      }
+      addEventListener('resize', resize); resize();
+
+      function spawnFish() {
+        const type = Math.random() < .6 ? 0 : Math.random() < .75 ? 1 : 2;
+        const defs = [
+          { name: '小鱼', r: 16, hp: 1, value: 10, speed: 34, color: '#70eaff' },
+          { name: '中鱼', r: 27, hp: 2, value: 25, speed: 24, color: '#ff9f68' },
+          { name: '鲨鱼', r: 43, hp: 5, value: 80, speed: 15, color: '#b6c7d9' }
+        ];
+        const d = defs[type], fromLeft = Math.random() < .5;
+        fish.push({ ...d, x: fromLeft ? -d.r * 2 : W + d.r * 2, y: rand(H * .25, H * .88),
+          vx: (fromLeft ? 1 : -1) * d.speed, hp: d.hp, maxHp: d.hp, phase: rand(0, TAU), dead: false });
+      }
+      for (let i = 0; i < 15; i++) spawnFish();
+
+      function initAudio() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); }
+      function tone(freq, duration, type = 'sine', gain = .06) {
+        if (!audio) return;
+        const osc = audio.createOscillator(), amp = audio.createGain();
+        osc.type = type; osc.frequency.value = freq; amp.gain.setValueAtTime(gain, audio.currentTime);
+        amp.gain.exponentialRampToValueAtTime(.001, audio.currentTime + duration);
+        osc.connect(amp).connect(audio.destination); osc.start(); osc.stop(audio.currentTime + duration);
+      }
+      function shoot() {
+        if (performance.now() - lastShot < 180) return;
+        lastShot = performance.now(); const r = 18 + power * .55, fast = speed > 1.05;
+        shots.push({ x: W * .5, y: H - 46, tx: aim.x, ty: aim.y, t: 0, duration: fast ? .32 : .48,
+          radius: r, damage: 1 + power / 42, color: colors[cannonLevel - 1] });
+        tone(190 + power * 3, .16, 'square', .07); power = 0; charging = false;
+      }
+      function capture(s) {
+        let caught = 0;
+        fish.forEach(f => {
+          if (f.dead || Math.hypot(f.x - s.tx, f.y - s.ty) > s.radius + f.r) return;
+          f.hp -= s.damage;
+          effects.push({ x: f.x, y: f.y, r: 2, life: .45, max: .45, color: s.color });
+          if (f.hp <= 0) { f.dead = true; caught++; score += f.value; texts.push({ x: f.x, y: f.y, value: f.value, life: 1 }); }
+        });
+        tone(caught ? 720 : 300, .18, 'sine', caught ? .1 : .04);
+      }
+      function activateFreeze() {
+        if (performance.now() < freezeUntil) return;
+        freezeUntil = performance.now() + 15000; tone(880, .5, 'sine', .1);
+      }
+
+      function processHand(result) {
+        handLandmarks = result.multiHandLandmarks?.[0] || null;
+        if (!handLandmarks) { pinch = false; previousTip = null; tipHistory = []; speed = 0; return; }
+        const tip = handLandmarks[8], thumb = handLandmarks[4];
+        aim.x = clamp((1 - tip.x) * W, 0, W); aim.y = clamp(tip.y * H, 0, H);
+        const now = performance.now(), pinchDistance = Math.hypot(tip.x - thumb.x, tip.y - thumb.y);
+        pinch = pinchDistance < .075;
+        power = pinch ? clamp(Math.max(power, (0.075 - pinchDistance) / .055 * 100) + .12, 0, 100) : power;
+        if (pinch && !charging) { charging = true; chargeStarted = now; }
+        if (!pinch && charging) shoot();
+        if (previousTip) {
+          tipHistory.push({ x: tip.x, y: tip.y, time: now });
+          if (tipHistory.length > 5) tipHistory.shift();
+          const oldest = tipHistory[0], elapsed = Math.max((now - oldest.time) / 1000, 1 / 60);
+          speed = Math.hypot(tip.x - oldest.x, tip.y - oldest.y) / elapsed;
+        } else {
+          tipHistory = [{ x: tip.x, y: tip.y, time: now }];
+        }
+        previousTip = { x: tip.x, y: tip.y };
+        const peace = isPeace(handLandmarks);
+        if (peace && !peaceWasOn) cannonLevel = cannonLevel % 4 + 1;
+        peaceWasOn = peace;
+        const open = isOpenHand(handLandmarks);
+        if (open) { if (!freezeGestureAt) freezeGestureAt = now; if (now - freezeGestureAt > 1000) activateFreeze(); }
+        else freezeGestureAt = 0;
+        drawDebug(result);
+      }
+      function isPeace(l) {
+        return l[8].y < l[6].y && l[12].y < l[10].y && l[16].y > l[14].y && l[20].y > l[18].y;
+      }
+      function isOpenHand(l) {
+        return l[8].y < l[6].y && l[12].y < l[10].y && l[16].y < l[14].y && l[20].y < l[18].y &&
+          Math.hypot(l[4].x - l[17].x, l[4].y - l[17].y) > .22;
+      }
+      function drawDebug(result) {
+        dctx.clearRect(0, 0, debug.width, debug.height); dctx.drawImage(video, 0, 0, debug.width, debug.height);
+        const l = result.multiHandLandmarks?.[0]; if (!l) return;
+        const links = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+        dctx.strokeStyle = '#70eaff'; dctx.lineWidth = 3; links.forEach(([a,b]) => { dctx.beginPath(); dctx.moveTo(l[a].x*debug.width,l[a].y*debug.height); dctx.lineTo(l[b].x*debug.width,l[b].y*debug.height); dctx.stroke(); });
+        dctx.fillStyle = '#ffd166'; l.forEach(p => { dctx.beginPath(); dctx.arc(p.x*debug.width,p.y*debug.height,5,0,TAU); dctx.fill(); });
+      }
+
+      function update(dt, now) {
+        if (now - lastShot > 800 && fish.length < 22) spawnFish();
+        const frozen = now < freezeUntil;
+        fish.forEach(f => { if (!f.dead && !frozen) { f.x += f.vx * dt; f.y += Math.sin(now / 700 + f.phase) * dt * 5; } });
+        for (let i = fish.length - 1; i >= 0; i--) if (fish[i].dead || fish[i].x < -120 || fish[i].x > W + 120) fish.splice(i, 1);
+        shots.forEach(s => { s.t += dt / s.duration; if (s.t >= 1 && !s.hit) { s.hit = true; capture(s); } });
+        while (shots.length && shots[0].t > 1.25) shots.shift();
+        effects.forEach(e => { e.life -= dt; e.r += dt * 160; }); while (effects.length && effects[0].life <= 0) effects.shift();
+        texts.forEach(t => { t.y -= dt * 34; t.life -= dt; }); while (texts.length && texts[0].life <= 0) texts.shift();
+        scoreEl.textContent = '金币 ' + score; powerBar.style.width = power + '%'; powerText.textContent = Math.round(power) + '%';
+        cannonLevelEl.textContent = cannonLevel; freezeText.textContent = frozen ? Math.ceil((freezeUntil - now) / 1000) + 's' : '就绪';
+      }
+      function draw(now) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, H); gradient.addColorStop(0, '#0a4b78'); gradient.addColorStop(1, '#02182f');
+        ctx.fillStyle = gradient; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#ffffff0b'; for (let i=0;i<35;i++) { const x=(i*83+now*.02)%W, y=(i*137+now*.04)%H; ctx.beginPath(); ctx.arc(x,y,1+(i%3),0,TAU);ctx.fill(); }
+        fish.forEach(f => { ctx.save(); ctx.translate(f.x, f.y); if (f.vx < 0) ctx.scale(-1,1); ctx.fillStyle=f.color; ctx.beginPath(); ctx.ellipse(0,0,f.r*1.35,f.r*.7,0,0,TAU);ctx.fill();ctx.beginPath();ctx.moveTo(-f.r,0);ctx.lineTo(-f.r*1.9,-f.r*.7);ctx.lineTo(-f.r*1.9,f.r*.7);ctx.closePath();ctx.fill();ctx.fillStyle='#062d52';ctx.beginPath();ctx.arc(f.r*.65,-f.r*.2,3,0,TAU);ctx.fill();ctx.restore(); });
+        shots.forEach(s => { const p = clamp(s.t,0,1), x=W*.5+(s.tx-W*.5)*p, y=H-46+(s.ty-(H-46))*p; ctx.strokeStyle=s.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(W*.5,H-46);ctx.lineTo(x,y);ctx.stroke(); if(s.hit){ctx.globalAlpha=1-s.t+.2;ctx.strokeStyle=s.color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.tx,s.ty,s.radius*(1+(s.t-1)*2),0,TAU);ctx.stroke();ctx.globalAlpha=1;} });
+        effects.forEach(e=>{ctx.globalAlpha=e.life/e.max;ctx.strokeStyle=e.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,TAU);ctx.stroke();ctx.globalAlpha=1;});
+        ctx.strokeStyle='#ffffffaa';ctx.lineWidth=2;ctx.beginPath();ctx.arc(aim.x,aim.y,18,0,TAU);ctx.moveTo(aim.x-28,aim.y);ctx.lineTo(aim.x-8,aim.y);ctx.moveTo(aim.x+8,aim.y);ctx.lineTo(aim.x+28,aim.y);ctx.moveTo(aim.x,aim.y-28);ctx.lineTo(aim.x,aim.y-8);ctx.moveTo(aim.x,aim.y+8);ctx.lineTo(aim.x,aim.y+28);ctx.stroke();
+        ctx.fillStyle='#d6f5ff';ctx.fillRect(W/2-34,H-20,68,20);ctx.fillStyle=colors[cannonLevel-1];ctx.beginPath();ctx.arc(W/2,H-42,24,Math.PI,TAU);ctx.fill();
+        texts.forEach(t=>{ctx.globalAlpha=t.life;ctx.fillStyle='#ffd166';ctx.font='bold 18px system-ui';ctx.fillText('+'+t.value+' 金币',t.x-25,t.y);ctx.globalAlpha=1;});
+        if (now < freezeUntil) { ctx.fillStyle='#bdeeff18';ctx.fillRect(0,0,W,H);ctx.fillStyle='#dffaff';ctx.font='bold 28px system-ui';ctx.textAlign='center';ctx.fillText('❄ 全屏冰冻 ❄',W/2, H*.18);ctx.textAlign='left'; }
+      }
+      function loop(now) { const dt=Math.min((now-last)/1000,.05); last=now; update(dt,now); draw(now); requestAnimationFrame(loop); }
+
+      start.addEventListener('click', async () => {
+        try {
+          initAudio(); await audio.resume();
+          const hands = new Hands({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+          hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: .65, minTrackingConfidence: .6 });
+          hands.onResults(processHand);
+          const camera = new Camera(video, { onFrame: async () => hands.send({ image: video }), width: 640, height: 480 });
+          await camera.start(); start.hidden = true; statusEl.textContent = '已连接：食指瞄准，捏合蓄力并松开射击。快速挥动会加速炮弹。';
+        } catch (error) { console.error(error); statusEl.textContent = '摄像头启动失败：请使用 localhost/HTTPS，并允许摄像头权限。'; }
+      });
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
