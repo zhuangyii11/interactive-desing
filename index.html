@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手势控制捕鱼游戏</title>
+  <title>深海识鱼记</title>
   <style>
     :root {
       color-scheme: dark;
@@ -109,7 +109,7 @@
     </select>
   </label>
   <section id="hud">
-    <div class="row"><span class="title">GESTURE FISHING</span><strong id="score">金币 0</strong></div>
+    <div class="row"><span class="title">深海识鱼记</span><strong id="score">金币 0</strong></div>
     <div class="stats row"><span id="gameTime">时间: 60s</span><span id="bestScore">最高分: 0</span><button id="soundToggle" type="button" aria-label="切换音效">🔊</button></div>
     <div class="stats row"><span>蓄力 POWER</span><strong id="powerText">0%</strong></div>
     <div class="bar"><div class="fill" id="powerBar"></div></div>
@@ -186,7 +186,7 @@
       const fish = [], shots = [], effects = [], texts = [], garbage = [];
       const newUnlocksThisRound = new Set();
       let garbageCleaned = 0, toastTimer;
-      let visualTime = 0, screenShake = 0;
+      let visualTime = 0, screenShake = 0, screenShakeFrames = 0;
       class ParticleManager {
         constructor() { this.items = []; }
         emit(x, y, count, options = {}) {
@@ -275,7 +275,7 @@
         }
         update(dt, now) {
           if (this.dead) return;
-          this.flash = Math.max(0, this.flash - dt); this.juice = Math.max(0, this.juice - dt * 22);
+          this.flash = Math.max(0, this.flash - dt * 60); this.juice = Math.max(0, this.juice - dt * 22);
           this.frightened = Math.max(0, this.frightened - dt); this.aiTimer -= dt;
           const direction = Math.sign(this.vx) || 1;
           if (this.frightened > 0) this.vx = direction * this.speed * 2 * this.fleeDirection;
@@ -291,7 +291,7 @@
           this.x += this.vx * dt; this.y += Math.sin(now / 700 + this.phase) * dt * (this.schoolId ? 11 : 5);
         }
         hit(damage, sourceX) {
-          this.hp -= damage; this.flash = .22; this.juice = 5;
+          this.hp -= damage; this.flash = 8; this.juice = 5;
           if (Math.abs(this.x - sourceX) < 180 && this.hp > 0) { this.frightened = 1.5; this.fleeDirection = this.x > sourceX ? 1 : -1; }
         }
         draw() { drawFish(this); }
@@ -352,7 +352,10 @@
         soundToggle.textContent = soundEnabled ? '🔊' : '🔇';
         if (soundEnabled) { initAudio(); audio.resume(); tone(660, .12, 'sine', .05); }
       });
-      function triggerShake(amount = 5) { screenShake = Math.max(screenShake, amount); }
+      function triggerShake(amount = 5) {
+        screenShake = Math.max(screenShake, amount);
+        screenShakeFrames = Math.max(screenShakeFrames, amount >= 10 ? 15 : 8);
+      }
       function unlockFact(id) {
         if (!FISH_TYPES[id] || unlockedFacts.has(id)) return;
         unlockedFacts.add(id); renderEncyclopedia();
@@ -486,16 +489,20 @@
         fish.forEach(f => {
           if (f.dead || Math.hypot(f.x - s.tx, f.y - s.ty) > s.radius + f.r) return;
           f.hit(s.damage, s.tx);
+          triggerShake(5);
           effects.push({ x: f.x, y: f.y, r: 2, life: .45, max: .45, color: s.color });
           if (f.hp <= 0) {
             f.dead = true;
+            triggerShake(12);
             unlockFact(f.id);
             if (f.protected) { score -= 50; ecologyWarning(`${f.name}为受保护物种，请勿误捕！金币 -50`); }
             else {
               capturedCounts[f.id] = (capturedCounts[f.id] || 0) + 1;
               roundCaptured[f.id] = (roundCaptured[f.id] || 0) + 1;
               if (f.gold) startGoldFever();
-              caught++; score += f.value * (performance.now() < goldFeverUntil || f.gold ? 2 : 1); texts.push({ x: f.x, y: f.y, value: f.value, life: 1 });
+              caught++; score += f.value * (performance.now() < goldFeverUntil || f.gold ? 2 : 1);
+              const earned = f.value * (performance.now() < goldFeverUntil || f.gold ? 2 : 1);
+              texts.push({ x: f.x, y: f.y, value: earned, life: .8, max: .8 });
               particles.emit(f.x, f.y, 14, { color: f.accentColor || '#ffd166', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
               if (f.value >= 50) triggerShake(7);
               triggerSpecial(f);
@@ -596,7 +603,10 @@
           lastCountdownSecond = remaining;
         }
         if (remaining <= 0) { endGame(); return; }
-        screenShake = Math.max(0, screenShake - dt * 35);
+        if (screenShakeFrames > 0) {
+          screenShakeFrames--;
+          screenShake *= .9;
+        } else screenShake = 0;
         updateCharge(now);
         InputState.power = power; InputState.charging = charging; InputState.speed = speed;
         if (mode === 'keyboard') {
@@ -648,7 +658,13 @@
           const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, fw * 1.5);
           glow.addColorStop(0, `${p.accentColor || '#c18cff'}99`); glow.addColorStop(1, `${p.accentColor || '#c18cff'}00`); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, fw * 1.5, 0, TAU); ctx.fill();
         }
-        ctx.shadowBlur = p.special === 'glow' || p.boss ? 18 : 0; ctx.shadowColor = p.accentColor;
+        ctx.shadowBlur = f.flash > 0 ? 30 : (p.special === 'glow' || p.boss ? 18 : 0);
+        ctx.shadowColor = f.flash > 0 ? '#ffffff' : p.accentColor;
+        if (f.flash > 0) {
+          const flashGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, fw * 1.4);
+          flashGlow.addColorStop(0, '#ffffffcc'); flashGlow.addColorStop(1, '#ffffff00');
+          ctx.fillStyle = flashGlow; ctx.beginPath(); ctx.arc(0, 0, fw * 1.4, 0, TAU); ctx.fill();
+        }
         const primaryColor = f.primaryColor || p.primaryColor, accentColor = f.accentColor || p.accentColor;
         const body = ctx.createLinearGradient(-fw, -fh, fw, fh); body.addColorStop(0, f.flash > 0 ? '#fff' : primaryColor); body.addColorStop(1, accentColor);
         ctx.fillStyle = body;
@@ -686,6 +702,11 @@
           ctx.save(); ctx.translate(x, phase * fh * .14); ctx.rotate(phase * .22);
           ctx.beginPath(); ctx.ellipse(0, 0, size, fh * (.28 - i * .015), 0, 0, TAU); ctx.fill(); ctx.restore();
         }
+        if (f.flash > 0) {
+          ctx.save(); ctx.globalCompositeOperation = 'source-atop'; ctx.globalAlpha = .96;
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(-fw, -fh, fw * 2, fh * 2);
+          ctx.restore();
+        }
         ctx.fillStyle = '#071325'; ctx.beginPath(); ctx.arc(fw * .32, -fh * .1, Math.max(2, fw * .045), 0, TAU); ctx.fill();
         if (f.hp < f.maxHp && !f.dead) {
           ctx.fillStyle = '#240f22'; ctx.fillRect(-fw * .5, -fh * .72, fw, 4); ctx.fillStyle = f.hp / f.maxHp < .35 ? '#ff5364' : '#ffd166'; ctx.fillRect(-fw * .5, -fh * .72, fw * clamp(f.hp / f.maxHp, 0, 1), 4);
@@ -717,7 +738,14 @@
         particles.draw();
         ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.save(); ctx.translate(aim.x, aim.y); ctx.rotate(visualTime * 1.8); ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.moveTo(-28, 0); ctx.lineTo(-8, 0); ctx.moveTo(8, 0); ctx.lineTo(28, 0); ctx.moveTo(0, -28); ctx.lineTo(0, -8); ctx.moveTo(0, 8); ctx.lineTo(0, 28); ctx.stroke(); ctx.restore();
         ctx.fillStyle = '#d6f5ff'; ctx.fillRect(W / 2 - 34, H - 20, 68, 20); ctx.fillStyle = colors[cannonLevel - 1]; ctx.beginPath(); ctx.arc(W / 2, H - 42, 24, Math.PI, TAU); ctx.fill();
-        texts.forEach(t => { ctx.globalAlpha = t.life; ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#321f50'; ctx.lineWidth = 4; ctx.font = '900 18px system-ui'; ctx.strokeText('+' + t.value + ' 金币', t.x - 25, t.y); ctx.fillText('+' + t.value + ' 金币', t.x - 25, t.y); ctx.globalAlpha = 1; });
+        texts.forEach(t => {
+          const progress = 1 - t.life / (t.max || 1);
+          ctx.save(); ctx.globalAlpha = clamp(t.life / (t.max || 1), 0, 1);
+          ctx.translate(t.x, t.y); ctx.scale(1 + progress * .35, 1 + progress * .35);
+          ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#321f50'; ctx.lineWidth = 4;
+          ctx.font = '900 18px system-ui'; ctx.textAlign = 'center'; ctx.strokeText('+' + t.value, 0, 0); ctx.fillText('+' + t.value, 0, 0);
+          ctx.restore();
+        });
         if (now < freezeUntil) { ctx.fillStyle = '#bdeeff18'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#dffaff'; ctx.font = 'bold 28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('❄ 全屏冰冻 ❄', W / 2, H * .18); ctx.textAlign = 'left'; }
         ctx.restore();
       }
