@@ -16,6 +16,7 @@
     html, body { margin: 0; min-height: 100%; background: #031326; font-family: system-ui, -apple-system, sans-serif; }
     body { overflow: hidden; }
     #gameCanvas { display: block; width: 100vw; height: 100vh; background: #062d52; }
+    #threeCanvas { position: fixed; inset: 0; z-index: 1; width: 100vw; height: 100vh; pointer-events: none; }
     #debugCanvas {
       position: fixed; z-index: 3; top: 16px; right: 16px; width: min(28vw, 320px);
       aspect-ratio: 4 / 3; border: 2px solid var(--cyan); border-radius: 12px;
@@ -62,7 +63,24 @@
       display: none; width: min(420px, calc(100vw - 30px)); padding: 16px; border: 2px solid #ff6b6b;
       border-radius: 14px; color: #fff; background: #671f2add; text-align: center; font-weight: 700;
     }
+    #unlockToast {
+      position: fixed; z-index: 12; top: 112px; right: 18px; opacity: 0; transform: translateY(-10px);
+      padding: 11px 15px; border: 1px solid var(--gold); border-radius: 12px; color: #fff6c2;
+      background: #382b0ddd; box-shadow: 0 0 22px #ffd16666; transition: opacity .25s, transform .25s;
+    }
+    #unlockToast.show { opacity: 1; transform: translateY(0); }
+    #goldFever {
+      position: fixed; z-index: 7; top: 120px; left: 50%; transform: translateX(-50%);
+      display: none; padding: 9px 18px; border: 1px solid var(--gold); border-radius: 999px;
+      color: #fff4b0; background: #6a421ccc; box-shadow: 0 0 24px #ffd166aa; font-weight: 900;
+    }
+    #gameOverDialog { text-align: center; }
+    #gameOverDialog button { padding: 8px 14px; border: 1px solid var(--cyan); border-radius: 8px; color: #dff6ff; background: #0a3152; cursor: pointer; }
+    #roundUnlocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 14px 0; text-align: left; }
+    .roundUnlock { padding: 8px; border: 1px solid var(--gold); border-radius: 8px; color: #ffeaa7; }
+    button.roundUnlock { width: 100%; background: #5a421d55; text-align: left; cursor: pointer; }
     .cyber { text-shadow: 0 0 8px currentColor; box-shadow: 0 0 18px #70eaff22, inset 0 0 20px #70eaff0c; }
+    body.gold-fever-active #gameCanvas { filter: saturate(1.35) sepia(.25); }
     #start {
       position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%);
       padding: 14px 22px; border: 1px solid var(--cyan); border-radius: 999px; color: #031326;
@@ -78,6 +96,7 @@
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
+  <canvas id="threeCanvas"></canvas>
   <canvas id="debugCanvas" width="640" height="480"></canvas>
   <label id="modePanel">控制模式
     <select id="modeSelect" aria-label="控制模式">
@@ -100,16 +119,27 @@
     <div id="encyclopediaGrid"></div>
   </dialog>
   <div id="warning" role="alert"></div>
+  <div id="unlockToast" role="status"></div>
+  <div id="goldFever">★ 黄金狂热 · 无限三连发 ★</div>
+  <dialog id="gameOverDialog">
+    <div class="dialogHead"><h2>本局结算</h2></div>
+    <p id="finalScore"></p>
+    <h3>本次新解锁物种</h3>
+    <div id="roundUnlocks"></div>
+    <button id="restartButton">再来一局</button>
+  </dialog>
   <button id="start">启动游戏与摄像头</button>
   <video id="video" playsinline muted hidden></video>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script>
     (() => {
       'use strict';
       const game = document.getElementById('gameCanvas');
       const ctx = game.getContext('2d');
+      const threeCanvas = document.getElementById('threeCanvas');
       const debug = document.getElementById('debugCanvas');
       const dctx = debug.getContext('2d');
       const video = document.getElementById('video');
@@ -126,6 +156,12 @@
       const encyclopediaGrid = document.getElementById('encyclopediaGrid');
       const closeEncyclopedia = document.getElementById('closeEncyclopedia');
       const warningEl = document.getElementById('warning');
+      const unlockToast = document.getElementById('unlockToast');
+      const goldFeverEl = document.getElementById('goldFever');
+      const gameOverDialog = document.getElementById('gameOverDialog');
+      const finalScoreEl = document.getElementById('finalScore');
+      const roundUnlocksEl = document.getElementById('roundUnlocks');
+      const restartButton = document.getElementById('restartButton');
       const TAU = Math.PI * 2;
       const colors = ['#54d7ff', '#ff79c6', '#ffd166', '#a7f36b'];
       let W = innerWidth, H = innerHeight, last = performance.now(), score = 0;
@@ -133,9 +169,11 @@
       let charging = false, chargeStarted = 0, lastShot = 0, freezeUntil = 0, freezeGestureAt = 0;
       let handLandmarks = null, previousTip = null, tipHistory = [], speed = 0, pinch = false, peaceWasOn = false;
       let mode = 'gesture', audio, hands, camera, cameraRunning = false, gameStarted = false;
-      let migrationUntil = 0, nextGarbageAt = performance.now() + 5000, lastMigration = performance.now();
+      let goldFeverUntil = 0, nextGarbageAt = performance.now() + 5000, roundStartedAt = 0, gameOver = false;
       const keys = new Set(), mouseHistory = [];
       const fish = [], shots = [], effects = [], texts = [], garbage = [];
+      const newUnlocksThisRound = new Set();
+      let garbageCleaned = 0, toastTimer;
       let visualTime = 0, screenShake = 0;
       class ParticleManager {
         constructor() { this.items = []; }
@@ -193,6 +231,7 @@
         blackhole: { id: 'blackhole', name: '黑洞鱼', scientificName: 'Abyssus vorago', category: '特殊鱼种', hp: 3, speed: 9, score: 55, rarity: 'epic', width: 54, height: 42, primaryColor: '#19152d', accentColor: '#ad75ff', tailSegments: 2, waterDepth: '深', conservationStatus: '无危', funFact: '黑洞鱼会扰动附近的水流和漂浮垃圾。', layer: 'deep', pattern: 'blackhole', special: 'blackhole' }
       };
       const capturedCounts = Object.fromEntries(Object.keys(FISH_TYPES).map(id => [id, 0]));
+      const three = { renderer: null, scene: null, camera: null, objects: new Map(), ready: false };
       class Garbage {
         constructor(type) {
           this.type = type; this.x = rand(30, W - 30); this.y = rand(H * .22, H * .88);
@@ -242,12 +281,53 @@
         }
         draw() { drawFish(this); }
       }
+      function initThreeFishLayer() {
+        if (!window.THREE) return;
+        three.renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+        three.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+        three.renderer.setSize(W, H, false);
+        three.scene = new THREE.Scene();
+        three.camera = new THREE.PerspectiveCamera(42, W / H, .1, 100);
+        three.camera.position.z = 18;
+        three.scene.add(new THREE.AmbientLight(0x9deaff, 1.8));
+        const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-4, 8, 10); three.scene.add(key);
+        three.ready = true;
+      }
+      function createThreeFish(f) {
+        const p = f.profile || f, group = new THREE.Group();
+        const bodyMat = new THREE.MeshStandardMaterial({ color: p.primaryColor || '#70d8e8', roughness: .42, metalness: p.boss ? .65 : .08, emissive: p.special === 'glow' || p.boss ? new THREE.Color(p.accentColor) : 0x000000, emissiveIntensity: p.boss ? .55 : .8 });
+        const body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), bodyMat);
+        body.scale.set((p.width || 40) / 36, (p.height || 24) / 36, .7); group.add(body);
+        const tail = new THREE.Mesh(new THREE.ConeGeometry(.55, 1.45, 4), new THREE.MeshStandardMaterial({ color: p.accentColor || '#bdeeff', emissive: p.accentColor || '#000000', emissiveIntensity: .25 }));
+        tail.rotation.z = Math.PI / 2; tail.position.x = -(p.width || 40) / 36 * .95; group.add(tail);
+        group.userData = { body, tail, phase: f.phase, fish: f };
+        three.scene.add(group); three.objects.set(f, group);
+      }
+      function updateThreeFish(now) {
+        if (!three.ready) return;
+        const live = new Set(fish);
+        three.objects.forEach((group, f) => {
+          if (!live.has(f) || f.dead) { three.scene.remove(group); three.objects.delete(f); return; }
+          if (!group.parent) three.scene.add(group);
+          const depth = f.layer === 'deep' ? -2.8 : f.layer === 'mid' ? -1 : 1;
+          group.position.set((f.x / W - .5) * 18, (.5 - f.y / H) * 10, depth);
+          group.rotation.y = f.vx < 0 ? Math.PI : 0;
+          group.rotation.z = Math.sin(now / 500 + f.phase) * .07 + (f.frightened > 0 ? .14 : 0);
+          group.rotation.x = Math.sin(now / 720 + f.phase) * .05;
+          group.userData.tail.rotation.y = Math.sin(now / 85 + f.phase) * .42;
+          group.userData.body.material.emissiveIntensity = f.flash > 0 ? 2.5 : (f.boss ? .8 : .35);
+          if (f.gold) group.userData.body.material.color.set('#ffd166');
+        });
+        fish.forEach(f => { if (!f.dead && !three.objects.has(f)) createThreeFish(f); });
+        three.renderer.render(three.scene, three.camera);
+      }
 
       function resize() {
         const ratio = Math.min(devicePixelRatio || 1, 2);
         W = innerWidth; H = innerHeight; game.width = W * ratio; game.height = H * ratio;
         game.style.width = W + 'px'; game.style.height = H + 'px'; ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         aim.x = clamp(aim.x, 0, W); aim.y = clamp(aim.y, 0, H);
+        if (three.ready) { three.renderer.setSize(W, H, false); three.camera.aspect = W / H; three.camera.updateProjectionMatrix(); }
       }
       addEventListener('resize', resize); resize();
 
@@ -259,10 +339,13 @@
         const fromLeft = Math.random() < .5;
         const layerY = d.layer === 'surface' ? rand(H * .2, H * .42) : d.layer === 'mid' ? rand(H * .4, H * .68) : rand(H * .65, H * .9);
         const schoolId = d.school ? `school-${Math.floor(performance.now() / 3000)}` : null;
-        fish.push(new Fish(typeId, { x: fromLeft ? -d.width : W + d.width, y: layerY, vx: (fromLeft ? 1 : -1) * d.speed, schoolId }));
-        if (d.school && fish.length < 22) for (let i = 0; i < 4; i++) fish.push(new Fish(typeId, { x: fromLeft ? -d.width - i * 25 : W + d.width + i * 25, y: layerY + i * 18, vx: (fromLeft ? 1 : -1) * d.speed, schoolId }));
+        const create = (x, y) => { const f = new Fish(typeId, { x, y, vx: (fromLeft ? 1 : -1) * d.speed, schoolId }); f.gold = performance.now() < goldFeverUntil; if (f.gold) { f.primaryColor = '#ffd166'; f.accentColor = '#fff2a6'; } fish.push(f); };
+        create(fromLeft ? -d.width : W + d.width, layerY);
+        if (d.school && fish.length < 22) for (let i = 0; i < 4; i++) create(fromLeft ? -d.width - i * 25 : W + d.width + i * 25, layerY + i * 18);
       }
       for (let i = 0; i < 15; i++) spawnFish();
+      initThreeFishLayer();
+      resize();
 
       function initAudio() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); }
       function tone(freq, duration, type = 'sine', gain = .06) {
@@ -276,10 +359,10 @@
       function unlockFact(id) {
         if (!FISH_TYPES[id] || unlockedFacts.has(id)) return;
         unlockedFacts.add(id); renderEncyclopedia();
-        if (gameStarted && !encyclopediaDialog.open) {
-          statusEl.textContent = `新物种图鉴已解锁：${FISH_TYPES[id].name}`;
-          encyclopediaDialog.showModal(); animateEncyclopediaThumbs();
-        }
+        newUnlocksThisRound.add(id);
+        unlockToast.textContent = `解锁新图鉴：${FISH_TYPES[id].name}`;
+        unlockToast.classList.add('show'); clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => unlockToast.classList.remove('show'), 3000);
       }
       function renderEncyclopedia() {
         encyclopediaGrid.innerHTML = Object.entries(FISH_TYPES).map(([id, type]) => {
@@ -324,7 +407,15 @@
       function clearGarbageAt(x, y, radius) {
         let cleaned = 0;
         garbage.forEach(item => { if (!item.dead && Math.hypot(item.x - x, item.y - y) < radius + item.r) { item.dead = true; cleaned++; } });
-        if (cleaned) { score += cleaned * 60; power = clamp(power + cleaned * 25, 0, 100); texts.push({ x, y, value: cleaned * 60, life: 1, label: '生态基金 +' }); tone(980, .15, 'triangle', .08); }
+        if (cleaned) {
+          garbageCleaned += cleaned; score += cleaned * 60; power = clamp(power + cleaned * 25, 0, 100); texts.push({ x, y, value: cleaned * 60, life: 1, label: '生态基金 +' }); tone(980, .15, 'triangle', .08);
+          if (garbageCleaned >= 5) { garbageCleaned = 0; startGoldFever(); }
+        }
+      }
+      function startGoldFever() {
+        goldFeverUntil = performance.now() + 8000; goldFeverEl.style.display = 'block'; triggerShake(5);
+        particles.emit(W / 2, H / 2, 70, { color: '#ffd166', speedMin: 30, speedMax: 190, life: 1, sizeMin: 1, sizeMax: 4 });
+        clearTimeout(startGoldFever.timer); startGoldFever.timer = setTimeout(() => goldFeverEl.style.display = 'none', 8000);
       }
       function feedFish() {
         if (!InputState.feeding) return;
@@ -343,8 +434,9 @@
       function shoot() {
         if (performance.now() - lastShot < 180) return;
         lastShot = performance.now(); const r = 18 + power * .55, fast = speed > 1.05;
-        shots.push({ x: W * .5, y: H - 46, tx: aim.x, ty: aim.y, t: 0, duration: fast ? .32 : .48,
-          radius: r, damage: 1 + power / 42, color: colors[cannonLevel - 1] });
+        const count = performance.now() < goldFeverUntil ? 3 : 1;
+        for (let i = 0; i < count; i++) shots.push({ x: W * .5, y: H - 46, tx: aim.x + (i - 1) * 28, ty: aim.y, t: 0, duration: fast ? .32 : .48,
+          radius: r, damage: 1 + power / 42, color: performance.now() < goldFeverUntil ? '#ffd166' : colors[cannonLevel - 1] });
         particles.emit(W * .5, H - 46, 14, { color: '#70eaff', speedMin: 25, speedMax: 95, gravity: -20, life: .45, sizeMin: 1, sizeMax: 3 });
         tone(190 + power * 3, .16, 'square', .07); power = 0; charging = false;
       }
@@ -395,15 +487,16 @@
         effects.push({ x: s.tx, y: s.ty, r: 6, life: .65, max: .65, color: s.color, net: true });
         fish.forEach(f => {
           if (f.dead || Math.hypot(f.x - s.tx, f.y - s.ty) > s.radius + f.r) return;
-          unlockFact(f.id);
           f.hit(s.damage, s.tx);
           effects.push({ x: f.x, y: f.y, r: 2, life: .45, max: .45, color: s.color });
           if (f.hp <= 0) {
             f.dead = true;
+            unlockFact(f.id);
             if (f.protected) { score -= 50; ecologyWarning(`${f.name}为受保护物种，请勿误捕！金币 -50`); }
             else {
               capturedCounts[f.id] = (capturedCounts[f.id] || 0) + 1;
-              caught++; score += f.value; texts.push({ x: f.x, y: f.y, value: f.value, life: 1 });
+              if (f.gold) startGoldFever();
+              caught++; score += f.value * (performance.now() < goldFeverUntil || f.gold ? 2 : 1); texts.push({ x: f.x, y: f.y, value: f.value, life: 1 });
               particles.emit(f.x, f.y, 14, { color: f.accentColor || '#ffd166', text: '●', speedMin: 35, speedMax: 130, gravity: 80, life: 1, sizeMin: 2, sizeMax: 4 });
               if (f.value >= 50) triggerShake(7);
               triggerSpecial(f);
@@ -416,6 +509,15 @@
       function activateFreeze() {
         if (performance.now() < freezeUntil) return;
         freezeUntil = performance.now() + 15000; triggerShake(9); particles.emit(W / 2, H / 2, 80, { color: '#bdeeff', speedMin: 40, speedMax: 230, life: 1.3, sizeMin: 1, sizeMax: 4 }); tone(880, .5, 'sine', .1);
+      }
+      function endGame() {
+        if (gameOver) return;
+        gameOver = true; stopCamera(); charging = false; power = 0;
+        finalScoreEl.textContent = `本局金币：${Math.max(0, Math.round(score))}`;
+        roundUnlocksEl.innerHTML = newUnlocksThisRound.size
+          ? [...newUnlocksThisRound].map(id => `<button class="roundUnlock" data-read-fish="${id}">${FISH_TYPES[id]?.name || id}<br><small>点击查看图鉴详情</small></button>`).join('')
+          : '<div class="roundUnlock">本局没有新解锁物种</div>';
+        gameOverDialog.showModal();
       }
 
       function processHand(result) {
@@ -482,16 +584,8 @@
         if (garbage.some(item => item.life < 1 && !item.dead)) score = Math.max(0, score - dt * 2);
         garbage.splice(0, garbage.length, ...garbage.filter(item => !item.dead));
         feedFish();
-        if (now - lastMigration > 30000) {
-          migrationUntil = now + 10000; lastMigration = now;
-          for (let i = 0; i < 8; i++) {
-            const migrant = new Fish('sardine', { x: -30 - i * 38, y: H * .34 + i * 22, vx: 50, schoolId: 'migration' });
-            migrant.id = 'migration'; migrant.name = '黄金鱼'; migrant.value = migrant.score = 35; migrant.primaryColor = '#ffd166'; migrant.accentColor = '#fff1a8'; migrant.gold = true;
-            fish.push(migrant);
-          }
-          ecologyWarning('黄金鱼群潮来袭！整齐阵型限时出现。');
-        }
         if (now - lastShot > 800 && fish.length < 22) spawnFish();
+        if (gameStarted && !gameOver && now - roundStartedAt > 90000) endGame();
         const frozen = now < freezeUntil;
         fish.forEach(f => { if (!frozen) f.update(dt, now); });
         for (let i = fish.length - 1; i >= 0; i--) if (fish[i].dead || fish[i].x < -120 || fish[i].x > W + 120) fish.splice(i, 1);
@@ -505,6 +599,8 @@
           if (p.y < -5) { p.y = H + 5; p.x = rand(0, W); }
         });
         InputState.aim = aim;
+        updateThreeFish(now);
+        document.body.classList.toggle('gold-fever-active', now < goldFeverUntil);
         scoreEl.textContent = '金币 ' + score; powerBar.style.width = power + '%'; powerText.textContent = Math.round(power) + '%';
         powerBar.classList.toggle('full', power >= 99);
         cannonLevelEl.textContent = cannonLevel; freezeText.textContent = frozen ? Math.ceil((freezeUntil - now) / 1000) + 's' : '就绪';
@@ -564,8 +660,9 @@
         ctx.save(); if (screenShake) ctx.translate(rand(-screenShake, screenShake), rand(-screenShake, screenShake));
         drawBackground(now);
         ctx.fillStyle = '#b5f3ff99'; ctx.font = '12px system-ui'; ctx.fillText('浅水区', 18, H * .22); ctx.fillText('中水区', 18, H * .46); ctx.fillText('深海区', 18, H * .71);
-        fish.forEach(drawFish); garbage.forEach(item => item.draw());
-        if (now < migrationUntil) { ctx.fillStyle = '#ffd166'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillText('黄金鱼群潮 · 迁徙中', W / 2, H * .16); ctx.textAlign = 'left'; }
+        if (!three.ready) fish.forEach(drawFish);
+        garbage.forEach(item => item.draw());
+        if (now < goldFeverUntil) { ctx.fillStyle = '#ffd16618'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff0a0'; ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillText('黄金狂热 · 金币 x2 · 三连发', W / 2, H * .16); ctx.textAlign = 'left'; }
         shots.forEach(s => { const p = clamp(s.t, 0, 1), x = W * .5 + (s.tx - W * .5) * p, y = H - 46 + (s.ty - (H - 46)) * p; ctx.strokeStyle = s.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * .5, H - 46); ctx.lineTo(x, y); ctx.stroke(); if (s.hit) { ctx.globalAlpha = 1 - s.t + .2; ctx.strokeStyle = s.color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, s.radius * (1 + (s.t - 1) * 2), 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } });
         effects.forEach(e => { ctx.globalAlpha = e.life / e.max; ctx.strokeStyle = e.color; ctx.lineWidth = e.net ? 3 : 2; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, TAU); if (e.net) { ctx.moveTo(e.x - e.r, e.y); ctx.lineTo(e.x + e.r, e.y); ctx.moveTo(e.x, e.y - e.r); ctx.lineTo(e.x, e.y + e.r); } ctx.stroke(); ctx.globalAlpha = 1; });
         particles.draw();
@@ -612,8 +709,14 @@
         keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key);
       });
       renderEncyclopedia();
+      restartButton.addEventListener('click', () => location.reload());
+      roundUnlocksEl.addEventListener('click', event => {
+        const button = event.target.closest('[data-read-fish]');
+        if (!button) return;
+        gameOverDialog.close(); renderEncyclopedia(); encyclopediaDialog.showModal(); animateEncyclopediaThumbs();
+      });
       start.addEventListener('click', async () => {
-        initAudio(); await audio.resume(); gameStarted = true; start.hidden = true;
+        initAudio(); await audio.resume(); gameStarted = true; gameOver = false; roundStartedAt = performance.now(); newUnlocksThisRound.clear(); start.hidden = true;
         if (mode === 'gesture') await startCamera();
       });
       requestAnimationFrame(loop);
